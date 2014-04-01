@@ -1,12 +1,21 @@
 AutoCorrect plugin for CKEditor
 ============================
 
-AutoCorrect recognizes hyperlinks, replace defined sequences of characters with specific characters.
-It improves your typography by replacing quotation marks with typographic quotes, three dots with "three dots" character, hyphens with dashes.
-It autoformats numbered and bulleted lists as you type, recognizes and formats ordinal numbers, such as `1st`, `2nd` etc.
-AutoCorrect inserts horizontal rule if you put three or more `-` characters in a paragraph.
+Brings some autocorrect features from MS Word / Open Office word processors.
+Works as you type only. At present there is no way to autocorrect an existing text.
 
-Optional feature: you can disable typing of double spaces.
+Features:
+
+* Smart quotes
+* Hyperlink autoformat
+* Bulleted and numbered lists autoformat (start a paragraph with `* ` or `1. ` and press Enter)
+* Character sequences autoreplace (e.g. (c) → ©)
+* Ordinal numbers autoformat (e.g. 1st → 1<sup>st</sup>)
+* Hyphen autocorrect (`-` → `–`)
+* Optional: disable typing of double spaces
+* Horizontal rule insertion (type `---` or `___` and press Enter)
+
+Different numbered lists are supported: `1. `, `a. `, `I. `. A right parenthesis can be used instead of full stops.
 
 Useful replacement character sequences:
 
@@ -17,7 +26,7 @@ Typed            | Replaced
 `-+ or +-`       | ±
 `~=`             | ≈
 `(c), (r), (tm)` | ©, ®, ™
-`(о)`            | ˚
+`(o)`            | ˚
 `...`            | …
 `<< and >>`      | « and »
 `1/2, 1/4, 3/4`  | ½, ¼, ¾
@@ -30,27 +39,32 @@ Place it in plugins/autocorrect directory where CKEditor is installed and don't 
 Config
 ------
 
-*CKEDITOR.config.autocorrect_replacementTable* - characters to replace as you type (key/value map)
+*autocorrect_replacementTable* (Object) - characters to replace as you type (key/value map)
 
-*CKEDITOR.config.autocorrect_useReplacementTable* - use the characters table to replace as you type
+*autocorrect_useReplacementTable* (Boolean) - use the characters table to replace as you type (default: true)
 
-*CKEDITOR.config.autocorrect_recognizeUrls* - recognize hyperlinks as you type
+*autocorrect_recognizeUrls* (Boolean) - recognize hyperlinks as you type (default: true)
 
-*CKEDITOR.config.autocorrect_replaceHyphens* - replace hypens with dashes as you type
+*autocorrect_replaceHyphens* (Boolean) - replace hypens with dashes as you type (default: true)
 
-*CKEDITOR.config.autocorrect_ignoreDoubleSpaces* - ignore double spaces
+*autocorrect_dash* (String) - a character to replace a hyphen with (defalut: '–')
 
-*CKEDITOR.config.autocorrect_replaceSingleQuotes* - replace single quotes as you type
+*autocorrect_ignoreDoubleSpaces* (Boolean) - ignore double spaces (default: false)
 
-*CKEDITOR.config.autocorrect_replaceDoubleQuotes* - replace double quotes as you type
+*autocorrect_replaceSingleQuotes* (Boolean) - replace single quotes as you type (default: true)
 
-*CKEDITOR.config.autocorrect_createHorizontalRules* - replace `---` or `___` (tree or more characters in a row) with horizontal rule
+*autocorrect_singleQuotes* (String) - quote pair to use as replacements (defalut: '‘’')
 
-*CKEDITOR.config.autocorrect_formatBulletedLists* - format `* any text` as bulleted list on `Enter` key press
+*autocorrect_replaceDoubleQuotes* (Boolean) - replace double quotes as you type (default: true)
 
-*CKEDITOR.config.autocorrect_formatBulletedLists* - format `1. any text` as numbered list on `Enter` key press (possible formats: `1` , `a` or `I` with dots or right parenthesis)
+*autocorrect_doubleQuotes* (String) - quote pair to use as single quotes replacements (defalut: '“”')
 
-*input[id=AUTO_SAVE_URL]* - input (usually hidden) with save url (located on the page)
+*autocorrect_createHorizontalRules* (Boolean) - replace `---` or `___` (tree or more characters in a row) with horizontal rule (default: true)
+
+*autocorrect_formatBulletedLists*  (Boolean)- format `* any text` as bulleted list on `Enter` key press (default: true)
+
+*autocorrect_formatNumberedLists* (Boolean) - format `1. any text` as numbered list on `Enter` key press (possible formats: `1` , `a` or `I` with dots or right parenthesis) (default: true)
+
 
 Usage
 -----
