@@ -15,8 +15,6 @@
 			var bulletedListMarkers = ['\\*'];
 			var numberedListMarkers = ['1','a','A','i','I'];
 
-			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[.?!#](?=[^\s\.,?!#]|$))+/i;
-
 			var horizontalRuleRe = new RegExp('^' + '(' + horizontalRuleMarkers.map(function(marker){ return marker + '{3,}';}).join('|') + ')' + '$');
 			var listItemContentPattern = '(?:.*?)[^\\.!,\\s]';
 			var bulletedListItemRe = new RegExp('^' + '(' + bulletedListMarkers.join('|') + ')' + ' ' + listItemContentPattern + '$');
@@ -35,16 +33,6 @@
 				}
 				return '';
 			}
-			function replace(text) {
-				var replacements = config.autocorrect_replacementTable;
-				return replacements[text];
-			}
-			function parseUrl(string) {
-				var match = string.match(urlRe);
-				return match ? match[0] : null;
-			}
-			// Registering keydown on every document recreation.(#3844)
-
 
 			function getBlockParent(node) {
 				while (node && (node.type !== CKEDITOR.NODE_ELEMENT || (node.getName() in CKEDITOR.dtd.$inline || node.getName() in CKEDITOR.dtd.$empty ))) {
@@ -53,21 +41,9 @@
 				return node;
 			}
 
-			function getListElement( editor, listTag ) {
-				var range;
-				try {
-					range = editor.getSelection().getRanges()[ 0 ];
-				} catch ( e ) {
-					return null;
-				}
-
-				range.shrink( CKEDITOR.SHRINK_TEXT );
-				return editor.elementPath( range.getCommonAncestor() ).contains( listTag, 1 );
-			}
-
 			function characterPosition(character) {
 				var alfa = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-				return alfa.indexOf(character);
+				return alfa.indexOf(character) + 1;
 			}
 			function toArabic(number) {
 				if (!number) return 0;
@@ -100,28 +76,202 @@
 				}
 			}
 
+			var replacementTable = config.autocorrect_replacementTable;
+			function replaceSequence(range, prefix) {
+				var replacement = replacementTable[prefix];
+				if (!replacement)
+					return false;
+
+				var index = range.startOffset;
+				setTimeout(function(){
+					editor.fire( 'saveSnapshot' );
+					var text = range.startContainer.getText();
+					var bookmark = editor.getSelection().getRanges().shift().createBookmark();
+					range.startContainer.setText(text.substring(0, index - prefix.length) + replacement + text.substring(index));
+					editor.getSelection().selectBookmarks([bookmark]);
+					editor.fire( 'saveSnapshot' );
+				});
+
+				return true;
+			}
+
+			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[.?!#](?=[^\s\.,?!#]|$))+/i;
+			function formatHyperlink(range, prefix) {
+				var match = prefix.match(urlRe);
+				if (!match)
+					return false;
+
+				var url = match[0];
+				var href = match[1] === 'www.' ? 'http://' + url : url;
+				setTimeout(function() {
+					editor.fire( 'saveSnapshot' );
+					var attributes = {'data-cke-saved-href': href, href: href};
+					var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
+					style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
+					range.setStart(range.startContainer, range.startOffset - prefix.length);
+					range.setEnd(range.startContainer, range.startOffset + url.length);
+					style.applyToRange( range );
+				});
+
+				return true;
+			}
+
+			var suffixes = {st: true, nd: true, rd: true, th: true};
+			function formatOrdinals(range, prefix) {
+				var suffix = prefix.slice(-2);
+				if (!(suffix in suffixes))
+					return false;
+
+				var number = prefix.slice(0, -2);
+				var numberRe = /^\d+$/;
+				if (!numberRe.test(number))
+					return false;
+
+				var n = number % 100;
+				if (n > 9 && n < 20) {
+					if (suffix !== 'th')
+						return false;
+				} else {
+					n = number % 10;
+					if (n == 1) {
+						if (suffix !== 'st')
+							return false;
+					} else if (n == 2) {
+						if (suffix !== 'nd')
+							return false;
+					} else if (n == 3) {
+						if (suffix !== 'rd')
+							return false;
+					} else if (suffix !== 'th')
+						return false;
+				}
+				setTimeout(function() {
+					editor.fire( 'saveSnapshot' );
+					var style = new CKEDITOR.style({ element: 'sup' } );
+					range.setStart(range.startContainer, range.startOffset - suffix.length);
+					range.setEnd(range.startContainer, range.startOffset + suffix.length);
+					style.applyToRange( range );
+				});
+
+				return true;
+			}
+
+			function autoCorrectOnSpaceKey() {
+				var range = editor.getSelection().getRanges().shift();
+				if (!range)
+					return;
+
+				var prefix = retreivePrefix(range);
+				if (prefix) {
+					// Format hyperlink
+					if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix))
+						return;
+
+					// Autoreplace using replacement table
+					if (config.autocorrect_useReplacementTable && replaceSequence(range, prefix))
+						return;
+
+					// Format ordinals
+					if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
+						return;
+				}
+
+				var leftChar = range.startContainer.getText().substring(range.startOffset-1, range.startOffset);
+
+				// Replace hypen
+				// TODO improve it
+				if (config.autocorrect_replaceHyphens && leftChar == '-') {
+					var index = range.startOffset;
+					var dash = config.autocorrect_dash;
+					setTimeout(function(){
+						editor.fire( 'saveSnapshot' );
+						var text = range.startContainer.getText();
+						var ranges = editor.getSelection().getRanges();
+						range.startContainer.setText(text.substring(0, index - 1) + dash + text.substring(index));
+						if (ranges[0].startContainer.$ === range.startContainer.$) {
+							ranges[0].setStart(range.startContainer, index - 1 + dash.length + 1);
+							ranges[0].setEnd(range.startContainer, index - 1 + dash.length + 1);
+						}
+						editor.getSelection().selectRanges(ranges);
+						editor.fire( 'saveSnapshot' );
+					});
+					return;
+				}
+			}
+
+			function replaceContentsWithList(listContents, type, attributes) {
+				// Insert the list to the DOM tree.
+				var insertAnchor = listContents[ listContents.length - 1 ].getNext(),
+					listNode = editor.document.createElement( type );
+
+				var commonParent = listContents[0].getParent();
+
+				var contentBlock, listItem;
+
+				while ( listContents.length ) {
+					contentBlock = listContents.shift();
+					listItem = editor.document.createElement( 'li' );
+
+					// If current block should be preserved, append it to list item instead of
+					// transforming it to <li> element.
+					if ( false /*shouldPreserveBlock( contentBlock )*/ )
+						contentBlock.appendTo( listItem );
+					else {
+						contentBlock.copyAttributes( listItem );
+						// Remove direction attribute after it was merged into list root. (#7657)
+/*						if ( listDir && contentBlock.getDirection() ) {
+							listItem.removeStyle( 'direction' );
+							listItem.removeAttribute( 'dir' );
+						}*/
+						contentBlock.moveChildren( listItem );
+						contentBlock.remove();
+					}
+
+					listItem.appendTo( listNode );
+				}
+
+				// Apply list root dir only if it has been explicitly declared.
+				// if ( listDir && explicitDirection )
+				// 	listNode.setAttribute( 'dir', listDir );
+
+				if (attributes)
+					listNode.setAttributes(attributes);
+
+				if ( insertAnchor )
+					listNode.insertBefore( insertAnchor );
+				else
+					listNode.appendTo( commonParent );
+			}
+
 			editor.on( 'key', function( event ) {
 				if (event.data.keyCode != 13)
 					return;
-				if (!(config.autocorrect_createHorizontalRules || config.autocorrect_formatNumberedLists || config.autocorrect_formatBulletedLists))
-					return;
+
 				var range = editor.getSelection().getRanges().shift();
 				var parent = getBlockParent(range.startContainer);
 				if (parent.getName() !== 'p')
 					return;
 				var content = parent.getText();
 				var match;
+				if (config.autocorrect_createHorizontalRules && (match = content.match(horizontalRuleRe))) {
+					setTimeout(function() {
+						var hr = editor.document.createElement( 'hr' );
+						hr.replace(parent);
+					});
+					return;
+				}
+				// Call this after rule replacement to prevent conflicts
+				autoCorrectOnSpaceKey();
+
 				if (config.autocorrect_formatBulletedLists && (match = content.match(bulletedListItemRe))) {
 					var marker = match[1];
 					var firstChild = parent.getFirst();
 					setTimeout(function() {
 						editor.fire( 'saveSnapshot' );
-						var range = editor.getSelection().getRanges().shift();
+						var bookmark = editor.getSelection().getRanges().shift().createBookmark();
 						firstChild.setText(firstChild.getText().substring(marker.length + 1));
-						editor.getSelection().selectElement(parent);
-						editor.execCommand('bulletedlist');
-						editor.getSelection().selectRanges([range]);
-						editor.execCommand('bulletedlist');
+						replaceContentsWithList([parent, parent.getNext()], 'ul', null);
+						editor.getSelection().selectBookmarks([bookmark]);
 						editor.fire( 'saveSnapshot' );
 					});
 				} else if (config.autocorrect_formatNumberedLists && (match = content.match(numberedListItemRe))) {
@@ -142,21 +292,12 @@
 					var firstChild = parent.getFirst();
 					setTimeout(function() {
 						editor.fire( 'saveSnapshot' );
-						var range = editor.getSelection().getRanges().shift();
+						var bookmark = editor.getSelection().getRanges().shift().createBookmark();
 						firstChild.setText(firstChild.getText().substring(slice));
-						editor.getSelection().selectElement(parent);
-						editor.execCommand('numberedlist');
-						var ol = getListElement(editor, 'ol');
-						ol.setAttribute('type', type);
-						//ol.setAttribute('start', start);
-						editor.getSelection().selectRanges([range]);
-						editor.execCommand('numberedlist');
+						replaceContentsWithList([parent, parent.getNext()], 'ol', {type: type, start: start});
+						editor.getSelection().selectBookmarks([bookmark]);
 						editor.fire( 'saveSnapshot' );
 					});
-				} else if (config.autocorrect_createHorizontalRules && (match = content.match(horizontalRuleRe))) {
-					parent.setText('');
-					var hr = editor.document.createElement( 'hr' );
-					editor.insertElement( hr );
 				}
 			});
 			editor.on( 'contentDom', function() {
@@ -165,6 +306,8 @@
 					if ( !event.data.$.ctrlKey && !event.data.$.metaKey ) {
 						var character = String.fromCharCode(event.data.$.charCode);
 
+						var range = editor.getSelection().getRanges().shift();
+						var leftChar = range ? range.startContainer.getText().substring(range.startOffset-1, range.startOffset) : '';
 						// Modify quotes
 						var quotes;
 						if (config.autocorrect_replaceDoubleQuotes && character == '"') {
@@ -174,12 +317,8 @@
 						}
 						if (quotes) {
 							var replacement = quotes[0];
-							var range = editor.getSelection().getRanges().shift();
-							if (range && range.startContainer && range.startContainer.$.data) {
-								var leftChar = range.startContainer.$.data.substring(range.startOffset-1, range.startOffset);
-								if (leftChar && '  -'.indexOf(leftChar) < 0){
-									replacement = quotes[1];
-								}
+							if (leftChar && '  -'.indexOf(leftChar) < 0) {
+								replacement = quotes[1];
 							}
 							setTimeout(function() {
 								editor.fire( 'saveSnapshot' );
@@ -194,109 +333,13 @@
 							return;
 						}
 
+						// Ignore double space
+						if (config.autocorrect_ignoreDoubleSpaces && (leftChar == ' ' || leftChar == ' ')) {
+							return event.data.$.preventDefault();
+						}
+
 						if (character == ' ' || character == ' ') {
-							var range = editor.getSelection().getRanges().shift();
-
-							if (range && range.startContainer) {
-								var prefix = retreivePrefix(range);
-								if (prefix) {
-									// Format hyperlink
-									var url;
-									if (config.autocorrect_recognizeUrls && (url = parseUrl(prefix))) {
-										setTimeout(function() {
-											editor.fire( 'saveSnapshot' );
-											var href = url.indexOf('www.') === 0 ? 'http://' + url : url;
-											var attributes = {'data-cke-saved-href': href, href: href};
-											var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
-											style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
-											range.setStart(range.startContainer, range.startOffset - prefix.length);
-											range.setEnd(range.startContainer, range.startOffset + url.length)
-											style.applyToRange( range );
-										});
-										return;
-									}
-									// Autoreplace using replacement table
-									var replacement;
-									if (config.autocorrect_useReplacementTable && (replacement = replace(prefix))) {
-										var index = range.startOffset;
-										setTimeout(function(){
-											editor.fire( 'saveSnapshot' );
-											var text = range.startContainer.getText();
-											var ranges = editor.getSelection().getRanges();
-											range.startContainer.setText(text.substring(0, index - prefix.length) + replacement + text.substring(index));
-											if (ranges[0].startContainer.$ === range.startContainer.$) {
-												ranges[0].setStart(range.startContainer, index - prefix.length + replacement.length + 1);
-												ranges[0].setEnd(range.startContainer, index - prefix.length + replacement.length + 1);
-											}
-											editor.getSelection().selectRanges(ranges);
-											editor.fire( 'saveSnapshot' );
-										});
-										return;
-									}
-									// Format ordinals
-									var suffix;
-									if (config.autocorrect_formatOrdinals && (suffix = prefix.slice(-2)) in {st: true, nd: true, rd: true, th: true}) {
-										var number = prefix.slice(0, -2);
-										var numberRe = /^\d+$/;
-										if (!numberRe.test(number))
-											return;
-										number = +number;
-										var x = number % 100;
-										if (x > 9 && x < 20) {
-											if (suffix !== 'th')
-												return;
-										} else {
-											x = number % 10;
-											if (x == 1) {
-												if (suffix !== 'st')
-													return;
-											} else if (x == 2) {
-												if (suffix !== 'nd')
-													return;
-											} else if (x == 3) {
-												if (suffix !== 'rd')
-													return;
-											} else if (suffix !== 'th')
-												return;
-										}
-										setTimeout(function() {
-											editor.fire( 'saveSnapshot' );
-											var style = new CKEDITOR.style({ element: 'sup' } );
-											style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
-											range.setStart(range.startContainer, range.startOffset - suffix.length);
-											range.setEnd(range.startContainer, range.startOffset + suffix.length)
-											style.applyToRange( range );
-										});
-									}
-								}
-
-								var leftChar = range.startContainer.getText().substring(range.startOffset-1, range.startOffset);
-
-								// Ignore double space
-								if (config.autocorrect_ignoreDoubleSpaces && (leftChar == ' ' || leftChar == ' ')) {
-									return event.data.$.preventDefault();
-								}
-
-								// Replace hypen
-								// TODO improve it
-								if (config.autocorrect_replaceHyphens && leftChar == '-') {
-									var index = range.startOffset;
-									var dash = config.autocorrect_dash;
-									setTimeout(function(){
-										editor.fire( 'saveSnapshot' )
-										var text = range.startContainer.getText();
-										var ranges = editor.getSelection().getRanges();
-										range.startContainer.setText(text.substring(0, index - 1) + dash + text.substring(index));
-										if (ranges[0].startContainer.$ === range.startContainer.$) {
-											ranges[0].setStart(range.startContainer, index - 1 + dash.length + 1);
-											ranges[0].setEnd(range.startContainer, index - 1 + dash.length + 1);
-										}
-										editor.getSelection().selectRanges(ranges);
-										editor.fire( 'saveSnapshot' )
-									});
-									return;
-								}
-							}
+							autoCorrectOnSpaceKey();
 						}
 					}
 				});
