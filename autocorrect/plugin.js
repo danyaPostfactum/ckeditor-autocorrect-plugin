@@ -12,8 +12,8 @@
 			var config = editor.config;
 
 			var horizontalRuleMarkers = ['-', '_'];
-			var bulletedListMarkers = ['\\*'];
-			var numberedListMarkers = ['1','a','A','i','I'];
+			var bulletedListMarkers = ['\\*', '\\+', '•'];
+			var numberedListMarkers = ['[0-9]+', '[ivxlcdm]+', '[IVXLCDM]+', '[a-z]', '[A-Z]'];
 
 			var listItemContentPattern = '(?:.*?)[^\\.!,\\s]';
 
