@@ -15,9 +15,8 @@
 			var bulletedListMarkers = ['\\*', '\\+', '•'];
 			var numberedListMarkers = ['[0-9]+', '[ivxlcdm]+', '[IVXLCDM]+', '[a-z]', '[A-Z]'];
 
-			var listItemContentPattern = '(?:.*?)[^\\.!,\\s]';
+			var listItemContentPattern = '(?:.*?)[^\\.!,\\s](?:.*)';
 
-			function autoCorrectOnSpaceKey() {
 				var range = editor.getSelection().getRanges().shift();
 				if (!range)
 					return;
