@@ -112,7 +112,7 @@
 				return true;
 			}
 
-			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[.?!#](?=[^\s\.,?!#]|$))+/i;
+			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[.?!#](?=[^\s\.,?!#]))+/i;
 			function formatHyperlink(range, prefix) {
 				var match = prefix.match(urlRe);
 				if (!match)
