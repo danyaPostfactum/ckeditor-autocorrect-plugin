@@ -8,8 +8,107 @@
 
 (function() {
 	CKEDITOR.plugins.add( 'autocorrect', {
+		requires: 'menubutton',
+		// lang: 'en,ru',
+		icons: 'autocorrect',
 		init: function( editor ) {
+
+			editor.addCommand( 'autocorrect', {
+				exec: function(editor) {
+					editor.fire( 'saveSnapshot' );
+					var selectedRange = editor.getSelection().getRanges().shift();
+					var bookmark = selectedRange.createBookmark();
+
+					var walkerRange;
+					if (selectedRange.collapsed) {
+						walkerRange = new CKEDITOR.dom.range(editor.editable());
+						walkerRange.selectNodeContents(editor.editable());
+					} else {
+						walkerRange = selectedRange.clone();
+					}
+
+					var walker = new CKEDITOR.dom.walker( walkerRange );
+					editor.editable().$.normalize();
+					walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_TEXT && !isBookmark(node) };
+					var node;
+					while (node = walker.next()) {
+						var next = getNext(node);
+						var parent = getBlockParent(node);
+						correctTextNode(node, (parent.isBlockBoundary() && !next) || next && next.type === CKEDITOR.NODE_ELEMENT && next.getName() === 'br');
+						if (parent.getName() === 'p' && !skipBreaks(next)) {
+							correctParagraph(parent);
+						}
+					}
+
+					editor.getSelection().selectBookmarks([bookmark]);
+					editor.fire( 'saveSnapshot' );
+				}
+			} );
+
+			var command = editor.addCommand('toggleAutocorrect', {
+				preserveState: true,
+				canUndo: false,
+
+				exec: function( editor ) {
+					this.setState(isEnabled() ? CKEDITOR.TRISTATE_OFF : CKEDITOR.TRISTATE_ON);
+				}
+			});
+
+			var isEnabled = function() {
+				return command.state === CKEDITOR.TRISTATE_ON;
+			};
+
+
+			var menuGroup = 'autocorrectButton';
+			editor.addMenuGroup( menuGroup );
+
+			// combine menu items to render
+			var uiMenuItems = {};
+
+			// always added
+			uiMenuItems.autoCorrectWhileTyping = {
+				label: 'Disable While Typing',
+				group: menuGroup,
+				command: 'toggleAutocorrect'
+			};
+
+			uiMenuItems.autoCorrectNow = {
+				label: 'AutoCorrect Now',
+				command: 'autocorrect',
+				group: menuGroup
+			};
+
+			editor.addMenuItems( uiMenuItems );
+
+			editor.ui.add( 'AutoCorrect', CKEDITOR.UI_MENUBUTTON, {
+				label: 'AutoCorrect',
+				modes: { wysiwyg: 1 },
+				toolbar: 'tools,20',
+				onRender: function() {
+					command.on( 'state', function() {
+						this.setState( command.state );
+					}, this );
+				},
+				onMenu: function() {
+					editor.getMenuItem( 'autoCorrectWhileTyping' ).label = isEnabled() ? 'Disable While Typing' : 'Enable While Typing';
+
+					return {
+						autoCorrectWhileTyping: CKEDITOR.TRISTATE_OFF,
+						autoCorrectNow: CKEDITOR.TRISTATE_OFF
+					};
+				}
+			});
+
+			var showInitialState = function( evt ) {
+				evt.removeListener();
+				command.setState( config.autocorrect_enabled ? CKEDITOR.TRISTATE_ON : CKEDITOR.TRISTATE_OFF );
+			};
+
+			editor.on( 'instanceReady', showInitialState );
+
 			var config = editor.config;
+
+			var isTyping = false;
 
 			var horizontalRuleMarkers = ['-', '_'];
 			var bulletedListMarkers = ['\\*', '\\+', '•'];
@@ -17,65 +116,136 @@
 
 			var listItemContentPattern = '(?:.*?)[^\\.!,\\s](?:.*)';
 
-				var range = editor.getSelection().getRanges().shift();
-				if (!range)
+			var isBookmark = CKEDITOR.dom.walker.bookmark();
+
+			function skipBreaks(node, isBackwards) {
+				while (node && node.type == CKEDITOR.NODE_ELEMENT && node.getName() == 'br') {
+					node = isBackwards ? node.getPrevious() : node.getNext();
+				}
+				return node;
+			}
+
+			function correctAtCursor(cursor, isEnter) {
+				if (cursor.startContainer.type == CKEDITOR.NODE_ELEMENT) {
+					var startNode = cursor.startContainer.getChild(cursor.startOffset - 1);
+					// Firefox in some cases sets cursor after ending <br>
+					startNode = skipBreaks(startNode, true);
+					if (!startNode)
+						return;
+					cursor.setStart(startNode, startNode.getText().length);
+					cursor.setEnd(startNode, startNode.getText().length);
+				}
+
+				var inputChar, leftChar;
+				// Handles special case of Enter key press
+				if (isEnter) {
+					inputChar = '\n';
+					leftChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
+				} else {
+					inputChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
+					leftChar = cursor.startContainer.getText().substring(cursor.startOffset-2, cursor.startOffset - 1);
+				}
+
+				if (config.autocorrect_replaceDoubleQuotes && replaceDoubleQuote(inputChar, leftChar, cursor))
 					return;
 
+				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(inputChar, leftChar, cursor))
+					return;
+
+				if (inputChar === '\n' || inputChar === ' ' || inputChar === ' ')
+					autoCorrectOnSpaceKey(cursor, isEnter);
+			}
+
+			function correctTextNode(node, isBlockEnding) {
+				var cursor = new CKEDITOR.dom.range(editor.editable());
+				cursor.setStart(node, 0);
+				cursor.setEnd(node, 0);
+				while (cursor.startOffset < cursor.startContainer.getText().length) {
+					cursor.setStart(cursor.startContainer, cursor.startOffset + 1);
+					cursor.setEnd(cursor.startContainer, cursor.startOffset);
+					correctAtCursor(cursor, false);
+					if (isBlockEnding && cursor.endOffset == cursor.startContainer.getText().length) {
+						// "Emulate" Enter key
+						correctAtCursor(cursor, true);
+					}
+				}
+
+			}
+
+			function correctParagraph(p) {
+				if (!p)
+					return;
+
+				// FIXME this way is wrong
+				var content = p.getText();
+
+				if (config.autocorrect_createHorizontalRules && insertHorizontalRule(p, content))
+					return;
+
+				if (config.autocorrect_formatBulletedLists && formatBulletedList(p, content))
+					return;
+
+				if (config.autocorrect_formatNumberedLists && formatNumberedList(p, content))
+					return;
+			}
+
+			function getNext(node) {
+				var next = node.getNext();
+				while (next && isBookmark(next)) {
+					next = next.getNext();
+				}
+				return next;
+			}
+
+			function replacePrefix(range, prefix) {
+				// Format hyperlink
+				if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix))
+					return;
+
+				// Autoreplace using replacement table
+				if (config.autocorrect_useReplacementTable && replaceSequence(range, prefix))
+					return;
+
+				// Format ordinals
+				if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
+					return;
+			}
+
+			function autoCorrectOnSpaceKey(cursor, isEnter) {
+				if (!cursor)
+					return;
+
+				var range = new CKEDITOR.dom.range(editor.editable());
+				if (isEnter) {
+					range.setStart(cursor.startContainer, cursor.startOffset);
+					range.setEnd(cursor.endContainer, cursor.endOffset);
+				} else {
+					range.setStart(cursor.startContainer, cursor.startOffset - 1);
+					range.setEnd(cursor.endContainer, cursor.endOffset - 1);
+				}
+				var offset = range.endOffset;
 				var prefix = retreivePrefix(range);
 				if (prefix) {
-					// Format hyperlink
-					if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix))
-						return;
-
-					// Autoreplace using replacement table
-					if (config.autocorrect_useReplacementTable && replaceSequence(range, prefix))
-						return;
-
-					// Format ordinals
-					if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
-						return;
+					replacePrefix(range, prefix);
 				}
+				var diff = offset - range.endOffset;
+				cursor.setStart(cursor.startContainer, cursor.startOffset + diff);
+				cursor.setEnd(cursor.endContainer, cursor.endOffset + diff);
 
 				var leftChar = range.startContainer.getText().substring(range.startOffset-1, range.startOffset);
 
 				// Replace hypen
 				// TODO improve it
 				if (config.autocorrect_replaceHyphens && leftChar == '-') {
-					var index = range.startOffset;
-					var dash = config.autocorrect_dash;
-					setTimeout(function(){
-						editor.fire( 'saveSnapshot' );
+					var charBeforeHyphen = range.startContainer.getText().substring(range.startOffset-2, range.startOffset-1);
+					if (charBeforeHyphen == ' ' || charBeforeHyphen == ' ') {
+						var dash = config.autocorrect_dash;
+						beforeReplace();
 						var text = range.startContainer.getText();
-						var ranges = editor.getSelection().getRanges();
-						range.startContainer.setText(text.substring(0, index - 1) + dash + text.substring(index));
-						if (ranges[0].startContainer.$ === range.startContainer.$) {
-							ranges[0].setStart(range.startContainer, index - 1 + dash.length + 1);
-							ranges[0].setEnd(range.startContainer, index - 1 + dash.length + 1);
-						}
-						editor.getSelection().selectRanges(ranges);
-						editor.fire( 'saveSnapshot' );
-					});
-					return;
+						range.startContainer.setText(text.substring(0, range.startOffset - 1) + dash + text.substring(range.startOffset));
+						afterReplace();
+					}
 				}
-			}
-
-			function autoCorrectOnEnterKey() {
-				var range = editor.getSelection().getRanges().shift();
-				var parent = getBlockParent(range.startContainer);
-				if (parent.getName() !== 'p')
-					return;
-				var content = parent.getText();
-
-				if (config.autocorrect_createHorizontalRules && insertHorizontalRule(parent, content))
-					return;
-				// Call this after rule replacement to prevent conflicts
-				autoCorrectOnSpaceKey();
-
-				if (config.autocorrect_formatBulletedLists && formatBulletedList(parent, content))
-					return;
-
-				if (config.autocorrect_formatNumberedLists && formatNumberedList(parent, content))
-					return;
 			}
 
 			function retreivePrefix(range) {
@@ -92,21 +262,32 @@
 				return '';
 			}
 
+			var bookmark;
+			function beforeReplace() {
+				if (!isTyping)
+					return;
+				editor.fire( 'saveSnapshot' );
+				bookmark = editor.getSelection().getRanges().shift().createBookmark();
+			}
+
+			function afterReplace() {
+				if (!isTyping)
+					return;
+				editor.getSelection().selectBookmarks([bookmark]);
+				editor.fire( 'saveSnapshot' );
+			}
+
 			var replacementTable = config.autocorrect_replacementTable;
 			function replaceSequence(range, prefix) {
 				var replacement = replacementTable[prefix];
 				if (!replacement)
 					return false;
 
-				var index = range.startOffset;
-				setTimeout(function(){
-					editor.fire( 'saveSnapshot' );
-					var text = range.startContainer.getText();
-					var bookmark = editor.getSelection().getRanges().shift().createBookmark();
-					range.startContainer.setText(text.substring(0, index - prefix.length) + replacement + text.substring(index));
-					editor.getSelection().selectBookmarks([bookmark]);
-					editor.fire( 'saveSnapshot' );
-				});
+				beforeReplace();
+				var text = range.startContainer.getText();
+				range.startContainer.setText(text.substring(0, range.startOffset - prefix.length) + replacement + text.substring(range.startOffset));
+				range.setEnd(range.endContainer, range.startOffset + prefix.length - 1);
+				afterReplace();
 
 				return true;
 			}
@@ -119,15 +300,15 @@
 
 				var url = match[0];
 				var href = match[1] === 'www.' ? 'http://' + url : url;
-				setTimeout(function() {
-					editor.fire( 'saveSnapshot' );
-					var attributes = {'data-cke-saved-href': href, href: href};
-					var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
-					style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
-					range.setStart(range.startContainer, range.startOffset - prefix.length);
-					range.setEnd(range.startContainer, range.startOffset + url.length);
-					style.applyToRange( range );
-				});
+
+				beforeReplace();
+				var attributes = {'data-cke-saved-href': href, href: href};
+				var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
+				style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
+				range.setStart(range.startContainer, range.startOffset - prefix.length);
+				range.setEnd(range.startContainer, range.startOffset + url.length);
+				style.applyToRange( range.clone() );
+				afterReplace();
 
 				return true;
 			}
@@ -161,13 +342,13 @@
 					} else if (suffix !== 'th')
 						return false;
 				}
-				setTimeout(function() {
-					editor.fire( 'saveSnapshot' );
-					var style = new CKEDITOR.style({ element: 'sup' } );
-					range.setStart(range.startContainer, range.startOffset - suffix.length);
-					range.setEnd(range.startContainer, range.startOffset + suffix.length);
-					style.applyToRange( range );
-				});
+
+				beforeReplace();
+				var style = new CKEDITOR.style({ element: 'sup' } );
+				range.setStart(range.startContainer, range.startOffset - suffix.length);
+				range.setEnd(range.startContainer, range.startOffset + suffix.length);
+				style.applyToRange( range.clone() );
+				afterReplace();
 
 				return true;
 			}
@@ -178,10 +359,8 @@
 				if (!match)
 					return false;
 
-				setTimeout(function() {
-					var hr = editor.document.createElement( 'hr' );
-					hr.replace(parent);
-				});
+				var hr = editor.document.createElement( 'hr' );
+				hr.replace(parent);
 
 				return true;
 			}
@@ -193,15 +372,23 @@
 					return false;
 
 				var marker = match[1];
+
+				beforeReplace();
 				var firstChild = parent.getFirst();
-				setTimeout(function() {
-					editor.fire( 'saveSnapshot' );
-					var bookmark = editor.getSelection().getRanges().shift().createBookmark();
-					firstChild.setText(firstChild.getText().substring(marker.length + 1));
-					replaceContentsWithList([parent, parent.getNext()], 'ul', null);
-					editor.getSelection().selectBookmarks([bookmark]);
-					editor.fire( 'saveSnapshot' );
-				});
+				firstChild.setText(firstChild.getText().substring(marker.length + 1));
+				if (isTyping) {
+					var nodes = isTyping ? [parent, parent.getNext()] : [parent];
+					replaceContentsWithList(nodes, 'ul', null);
+				} else {
+					var previous = parent.getPrevious();
+					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ul') {
+						appendContentsToList(parent, previous);
+					} else {
+						var nodes = isTyping ? [parent, parent.getNext()] : [parent];
+						replaceContentsWithList(nodes, 'ul', null);
+					}
+				}
+				afterReplace();
 
 				return true;
 			}
@@ -224,52 +411,54 @@
 					type = 'a';
 				else if (start.match(/[A-Z]/))
 					type = 'A';
-				var slice = start.length + 2;
-				start = toNumber(start, type);
+
+				beforeReplace();
 				var firstChild = parent.getFirst();
-				setTimeout(function() {
-					editor.fire( 'saveSnapshot' );
-					var bookmark = editor.getSelection().getRanges().shift().createBookmark();
-					firstChild.setText(firstChild.getText().substring(slice));
-					replaceContentsWithList([parent, parent.getNext()], 'ol', {type: type, start: start});
-					editor.getSelection().selectBookmarks([bookmark]);
-					editor.fire( 'saveSnapshot' );
-				});
+				firstChild.setText(firstChild.getText().substring(start.length + 2));
+				if (isTyping) {
+					var nodes = isTyping ? [parent, parent.getNext()] : [parent];
+					replaceContentsWithList(nodes, 'ol', {type: type, start: toNumber(start, type)});
+				} else {
+					var previous = parent.getPrevious();
+					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ol' && previous.getAttribute('type') == type && getLastNumber(previous) == start - 1) {
+						appendContentsToList(parent, previous);
+					} else {
+						var nodes = isTyping ? [parent, parent.getNext()] : [parent];
+						replaceContentsWithList(nodes, 'ol', {type: type, start: toNumber(start, type)});
+					}
+				}
+				afterReplace();
 
 				return true;
 			}
 
 			var doubleQuotes = config.autocorrect_doubleQuotes;
-			function replaceDoubleQuote(inputChar, leftChar) {
+			function replaceDoubleQuote(inputChar, leftChar, quoteRange) {
 				if (inputChar !== '"')
 					return false;
 
-				replaceQuote(leftChar, doubleQuotes);
+				replaceQuote(leftChar, doubleQuotes, quoteRange);
 				return true;
 			}
 
 			var singleQuotes = config.autocorrect_singleQuotes;
-			function replaceSingleQuote(inputChar, leftChar) {
+			function replaceSingleQuote(inputChar, leftChar, quoteRange) {
 				if (inputChar !== '\'')
 					return false;
 
-				replaceQuote(leftChar, singleQuotes);
+				replaceQuote(leftChar, singleQuotes, quoteRange);
 				return true;
 			}
 
-			function replaceQuote(leftChar, quotes) {
+			function replaceQuote(leftChar, quotes, range) {
 				var isClosingQuote = leftChar && '  -'.indexOf(leftChar) < 0;
 				var replacement = quotes[isClosingQuote ? 1 : 0];
-				setTimeout(function() {
-					editor.fire( 'saveSnapshot' );
-					var range = editor.getSelection().getRanges().shift();
-					var text = range.startContainer.getText();
-					range.startContainer.setText(text.substring(0, range.endOffset - 1) + replacement + text.substring(range.endOffset));
-					range.setStart(range.startContainer, range.endOffset);
-					range.setStart(range.startContainer, range.endOffset);
-					editor.getSelection().selectRanges([range]);
-					editor.fire( 'saveSnapshot' );
-				});
+
+				beforeReplace();
+				var text = range.startContainer.getText();
+				range.startContainer.setText(text.substring(0, range.endOffset - 1) + replacement + text.substring(range.endOffset));
+				range.setStart(range.startContainer, range.endOffset);
+				afterReplace();
 			}
 
 			function getBlockParent(node) {
@@ -279,6 +468,11 @@
 				return node;
 			}
 
+			function getLastNumber(list) {
+				var start = parseInt(list.getAttribute('start') || 0, 10);
+				return start + list.getChildCount() - 1;
+			}
+
 			function replaceContentsWithList(listContents, type, attributes) {
 				// Insert the list to the DOM tree.
 				var insertAnchor = listContents[ listContents.length - 1 ].getNext(),
@@ -286,28 +480,11 @@
 
 				var commonParent = listContents[0].getParent();
 
-				var contentBlock, listItem;
+				var contentBlock;
 
 				while ( listContents.length ) {
 					contentBlock = listContents.shift();
-					listItem = editor.document.createElement( 'li' );
-
-					// If current block should be preserved, append it to list item instead of
-					// transforming it to <li> element.
-					if ( false /*shouldPreserveBlock( contentBlock )*/ )
-						contentBlock.appendTo( listItem );
-					else {
-						contentBlock.copyAttributes( listItem );
-						// Remove direction attribute after it was merged into list root. (#7657)
-						/*if ( listDir && contentBlock.getDirection() ) {
-							listItem.removeStyle( 'direction' );
-							listItem.removeAttribute( 'dir' );
-						}*/
-						contentBlock.moveChildren( listItem );
-						contentBlock.remove();
-					}
-
-					listItem.appendTo( listNode );
+					appendContentsToList(contentBlock, listNode);
 				}
 
 				// Apply list root dir only if it has been explicitly declared.
@@ -321,6 +498,27 @@
 					listNode.insertBefore( insertAnchor );
 				else
 					listNode.appendTo( commonParent );
+			}
+
+			function appendContentsToList(contentBlock, listNode) {
+				var listItem = editor.document.createElement( 'li' );
+
+				// If current block should be preserved, append it to list item instead of
+				// transforming it to <li> element.
+				if ( false /*shouldPreserveBlock( contentBlock )*/ )
+					contentBlock.appendTo( listItem );
+				else {
+					contentBlock.copyAttributes( listItem );
+					// Remove direction attribute after it was merged into list root. (#7657)
+					/*if ( listDir && contentBlock.getDirection() ) {
+						listItem.removeStyle( 'direction' );
+						listItem.removeAttribute( 'dir' );
+					}*/
+					contentBlock.moveChildren( listItem );
+					contentBlock.remove();
+				}
+
+				listItem.appendTo( listNode );
 			}
 
 			function characterPosition(character) {
@@ -361,31 +559,44 @@
 			}
 
 			editor.on( 'key', function( event ) {
-				if (event.data.keyCode != 13)
+				if (!isEnabled())
 					return;
-				autoCorrectOnEnterKey();
+				if (editor.mode !== 'wysiwyg')
+					return;
+				if (event.data.keyCode != 2228237 && event.data.keyCode != 13)
+					return;
+
+				var cursor = editor.getSelection().getRanges().shift();
+				var paragraph = null;
+
+				if (event.data.keyCode === 13) {
+					var parent = getBlockParent(cursor.startContainer);
+					if (parent.getName() === 'p') {
+						paragraph = parent;
+					}
+				}
+
+				setTimeout(function() {
+					isTyping = true;
+					correctAtCursor(cursor, true);
+					correctParagraph(paragraph);
+					isTyping = false;
+				});
 			});
 
 			editor.on( 'contentDom', function() {
 				editor.editable().on( 'keypress', function( event ) {
+					if (!isEnabled())
+						return;
 					if ( event.data.$.ctrlKey || event.data.$.metaKey )
 						return;
 
-					var range = editor.getSelection().getRanges().shift();
-					var leftChar = range ? range.startContainer.getText().substring(range.startOffset-1, range.startOffset) : '';
-					var inputChar = String.fromCharCode(event.data.$.charCode);
-
-					if (config.autocorrect_replaceDoubleQuotes && replaceDoubleQuote(inputChar, leftChar))
-						return;
-
-					if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(inputChar, leftChar))
-						return;
-
-					if (config.autocorrect_ignoreDoubleSpaces && (leftChar == ' ' || leftChar == ' '))
-						return event.data.$.preventDefault();
-
-					if (inputChar == ' ' || inputChar == ' ')
-						autoCorrectOnSpaceKey();
+					setTimeout(function() {
+						isTyping = true;
+						var cursor = editor.getSelection().getRanges().shift();
+						correctAtCursor(cursor);
+						isTyping = false;
+					});
 				});
 			});
 		}
@@ -395,6 +606,8 @@
 
 })();
 
+
+CKEDITOR.config.autocorrect_enabled = true;
 /**
  * 
  *
@@ -402,6 +615,7 @@
  * @member CKEDITOR.config
  */
 // language specific
+
 CKEDITOR.config.autocorrect_replacementTable = {"--": "–", "-->": "→", "-+": "±", "->": "→", "...": "…", "(c)": "©", "(r)": "®", "(tm)": "™", "(o)": "˚", "+-": "±", "<-": "←", "<--": "←", "<-->": "↔", "<->": "↔", "<<": "«", ">>": "»", "~=": "≈", "1/": "½", "1/4": "¼", "3/4": "¾"};
 
 CKEDITOR.config.autocorrect_useReplacementTable = true;
@@ -413,8 +627,6 @@ CKEDITOR.config.autocorrect_dash = '–';
 CKEDITOR.config.autocorrect_replaceHyphens = true;
 
 CKEDITOR.config.autocorrect_formatOrdinals = true;
-
-CKEDITOR.config.autocorrect_ignoreDoubleSpaces = false;
 
 CKEDITOR.config.autocorrect_replaceSingleQuotes = true;
 // language specific
