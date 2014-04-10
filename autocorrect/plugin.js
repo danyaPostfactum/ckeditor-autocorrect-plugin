@@ -407,16 +407,11 @@
 				var firstChild = parent.getFirst();
 				beforeReplace();
 				firstChild.setText(firstChild.getText().substring(marker.length + 1));
-				if (isTyping) {
-					replaceContentsWithList([parent], 'ul', null);
+				var previous = parent.getPrevious();
+				if (!isTyping && previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ul') {
+					appendContentsToList(parent, previous);
 				} else {
-					var previous = parent.getPrevious();
-					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ul') {
-						appendContentsToList(parent, previous);
-					} else {
-						var nodes = isTyping ? [parent, parent.getNext()] : [parent];
-						replaceContentsWithList(nodes, 'ul', null);
-					}
+					replaceContentsWithList([parent], 'ul', null);
 				}
 				afterReplace();
 
@@ -449,16 +444,13 @@
 				beforeReplace();
 				var firstChild = parent.getFirst();
 				firstChild.setText(firstChild.getText().substring(start.length + 2));
-				if (isTyping) {
-					replaceContentsWithList([parent], 'ol', {type: type, start: toNumber(start, type)});
+				var startNumber = toNumber(start, type);
+				var previous = parent.getPrevious();
+				if (!isTyping && previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ol' && previous.getAttribute('type') == type && getLastNumber(previous) == startNumber - 1) {
+					appendContentsToList(parent, previous);
 				} else {
-					var previous = parent.getPrevious();
-					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ol' && previous.getAttribute('type') == type && getLastNumber(previous) == start - 1) {
-						appendContentsToList(parent, previous);
-					} else {
-						var nodes = isTyping ? [parent, parent.getNext()] : [parent];
-						replaceContentsWithList(nodes, 'ol', {type: type, start: toNumber(start, type)});
-					}
+					var attributes = startNumber === 1 ? {type: type} : {type: type, start: startNumber};
+					replaceContentsWithList([parent], 'ol', attributes);
 				}
 				afterReplace();
 
