@@ -125,7 +125,11 @@
 				return node;
 			}
 
-			function isDelimiter(ch) {
+			function isWhitespace(ch) {
+				return ch === ' ' || ch === ' ';
+			}
+
+			function isPunctuation(ch) {
 				return ch === '.' || ch === ',' || ch === '!' || ch === '?' || ch === '/';
 			}
 
@@ -143,7 +147,7 @@
 				var inputChar, leftChar;
 				// Handles special case of Enter key press
 				if (isEnter) {
-					inputChar = '\n';
+					inputChar = '';
 					leftChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
 				} else {
 					inputChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
@@ -156,8 +160,12 @@
 				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(inputChar, leftChar, cursor))
 					return;
 
-				if (inputChar === '\n' || inputChar === ' ' || inputChar === ' ' || isDelimiter(inputChar))
-					autoCorrectOnSpaceKey(cursor, isEnter);
+				// bulleted and numbered lists
+				if (isWhitespace(inputChar))
+					autoCorrectOnWhitespace(cursor);
+
+				if (isEnter || isPunctuation(inputChar) || isWhitespace(inputChar))
+					autoCorrectOnDelimiter(cursor, inputChar);
 			}
 
 			function correctTextNode(node, isBlockEnding) {
@@ -185,12 +193,6 @@
 
 				if (config.autocorrect_createHorizontalRules && insertHorizontalRule(p, content))
 					return;
-
-				if (config.autocorrect_formatBulletedLists && formatBulletedList(p, content))
-					return;
-
-				if (config.autocorrect_formatNumberedLists && formatNumberedList(p, content))
-					return;
 			}
 
 			function getNext(node) {
@@ -201,9 +203,9 @@
 				return next;
 			}
 
-			function replacePrefix(range, prefix) {
+			function replacePrefix(range, prefix, delimiter) {
 				// Format hyperlink
-				if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix))
+				if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix, delimiter))
 					return;
 
 				// Autoreplace using replacement table
@@ -214,24 +216,25 @@
 				if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
 					return;
 			}
+							// bulleted and numbered lists
 
-			function autoCorrectOnSpaceKey(cursor, isEnter) {
-				if (!cursor)
-					return;
-
+			function autoCorrectOnWhitespace(cursor) {
 				var range = new CKEDITOR.dom.range(editor.editable());
-				if (isEnter) {
-					range.setStart(cursor.startContainer, cursor.startOffset);
-					range.setEnd(cursor.endContainer, cursor.endOffset);
-				} else {
-					range.setStart(cursor.startContainer, cursor.startOffset - 1);
-					range.setEnd(cursor.endContainer, cursor.endOffset - 1);
-				}
+				range.setStart(cursor.startContainer, cursor.startOffset - 1);
+				range.setEnd(cursor.endContainer, cursor.endOffset - 1);
+
 				var offset = range.endOffset;
 				var prefix = retreivePrefix(range);
-				if (prefix) {
-					replacePrefix(range, prefix);
-				}
+
+				if (!prefix)
+					return;
+
+				if (config.autocorrect_formatBulletedLists && formatBulletedList(range, prefix))
+					return;
+
+				if (config.autocorrect_formatNumberedLists && formatNumberedList(range, prefix))
+					return;
+
 				var diff = offset - range.endOffset;
 				cursor.setStart(cursor.startContainer, cursor.startOffset + diff);
 				cursor.setEnd(cursor.endContainer, cursor.endOffset + diff);
@@ -250,6 +253,24 @@
 						afterReplace();
 					}
 				}
+			}
+
+			function autoCorrectOnDelimiter(cursor, delimiter) {
+				var range = new CKEDITOR.dom.range(editor.editable());
+				range.setStart(cursor.startContainer, cursor.startOffset - delimiter.length);
+				range.setEnd(cursor.endContainer, cursor.endOffset - delimiter.length);
+
+				var offset = range.endOffset;
+				var prefix = retreivePrefix(range);
+
+				if (!prefix)
+					return;
+
+				replacePrefix(range, prefix, delimiter);
+
+				var diff = offset - range.endOffset;
+				cursor.setStart(cursor.startContainer, cursor.startOffset + diff);
+				cursor.setEnd(cursor.endContainer, cursor.endOffset + diff);
 			}
 
 			function retreivePrefix(range) {
@@ -296,8 +317,10 @@
 				return true;
 			}
 
-			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[.?!#](?=[^\s\.,?!#]))+/i;
-			function formatHyperlink(range, prefix) {
+			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[\.,?!#](?=[^\s\.,?!#]))+/i;
+			function formatHyperlink(range, prefix, delimiter) {
+				if (isPunctuation(delimiter))
+					return;
 				var match = prefix.match(urlRe);
 				if (!match)
 					return false;
@@ -369,20 +392,23 @@
 				return true;
 			}
 
-			var bulletedListItemRe = new RegExp('^' + '(' + bulletedListMarkers.join('|') + ')' + ' ' + listItemContentPattern + '$');
-			function formatBulletedList(parent, content) {
-				var match = content.match(bulletedListItemRe);
+			var bulletedListItemRe = new RegExp('^' + '(' + bulletedListMarkers.join('|') + ')' + '$');
+			function formatBulletedList(range, prefix) {
+				if (range.startContainer.getPrevious() || range.startOffset > prefix.length )
+					return false;
+
+				var match = prefix.match(bulletedListItemRe);
 				if (!match)
 					return false;
 
+				var parent = getBlockParent(range.startContainer);
 				var marker = match[1];
 
-				beforeReplace();
 				var firstChild = parent.getFirst();
+				beforeReplace();
 				firstChild.setText(firstChild.getText().substring(marker.length + 1));
 				if (isTyping) {
-					var nodes = isTyping ? [parent, parent.getNext()] : [parent];
-					replaceContentsWithList(nodes, 'ul', null);
+					replaceContentsWithList([parent], 'ul', null);
 				} else {
 					var previous = parent.getPrevious();
 					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ul') {
@@ -397,12 +423,16 @@
 				return true;
 			}
 
-			var numberedListItemRe = new RegExp('^' + '(' + numberedListMarkers.join('|') + ')' + '[\\.\\)] ' + listItemContentPattern + '$');
-			function formatNumberedList(parent, content) {
-				var match = content.match(numberedListItemRe);
+			var numberedListItemRe = new RegExp('^' + '(' + numberedListMarkers.join('|') + ')' + '[\\.\\)]' + '$');
+			function formatNumberedList(range, prefix) {
+				if (range.startContainer.getPrevious() || range.startOffset > prefix.length )
+					return false;
+
+				var match = prefix.match(numberedListItemRe);
 				if (!match)
 					return false;
 
+				var parent = getBlockParent(range.startContainer);
 				var start = match[1];
 				var type;
 				if (start.match(/\d/))
@@ -420,8 +450,7 @@
 				var firstChild = parent.getFirst();
 				firstChild.setText(firstChild.getText().substring(start.length + 2));
 				if (isTyping) {
-					var nodes = isTyping ? [parent, parent.getNext()] : [parent];
-					replaceContentsWithList(nodes, 'ol', {type: type, start: toNumber(start, type)});
+					replaceContentsWithList([parent], 'ol', {type: type, start: toNumber(start, type)});
 				} else {
 					var previous = parent.getPrevious();
 					if (previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ol' && previous.getAttribute('type') == type && getLastNumber(previous) == start - 1) {
