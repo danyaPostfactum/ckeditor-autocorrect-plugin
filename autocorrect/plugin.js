@@ -125,6 +125,10 @@
 				return node;
 			}
 
+			function isDelimiter(ch) {
+				return ch === '.' || ch === ',' || ch === '!' || ch === '?' || ch === '/';
+			}
+
 			function correctAtCursor(cursor, isEnter) {
 				if (cursor.startContainer.type == CKEDITOR.NODE_ELEMENT) {
 					var startNode = cursor.startContainer.getChild(cursor.startOffset - 1);
@@ -152,7 +156,7 @@
 				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(inputChar, leftChar, cursor))
 					return;
 
-				if (inputChar === '\n' || inputChar === ' ' || inputChar === ' ')
+				if (inputChar === '\n' || inputChar === ' ' || inputChar === ' ' || isDelimiter(inputChar))
 					autoCorrectOnSpaceKey(cursor, isEnter);
 			}
 
