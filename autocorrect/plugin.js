@@ -9,9 +9,11 @@
 (function() {
 	CKEDITOR.plugins.add( 'autocorrect', {
 		requires: 'menubutton',
-		// lang: 'en,ru',
+		lang: 'en,ru',
 		icons: 'autocorrect',
 		init: function( editor ) {
+			var config = editor.config;
+			var lang = editor.lang.autocorrect;
 
 			editor.addCommand( 'autocorrect', {
 				exec: function(editor) {
@@ -67,13 +69,13 @@
 
 			// always added
 			uiMenuItems.autoCorrectWhileTyping = {
-				label: 'Disable While Typing',
+				label: lang.disable,
 				group: menuGroup,
 				command: 'toggleAutocorrect'
 			};
 
 			uiMenuItems.autoCorrectNow = {
-				label: 'AutoCorrect Now',
+				label: lang.apply,
 				command: 'autocorrect',
 				group: menuGroup
 			};
@@ -81,16 +83,16 @@
 			editor.addMenuItems( uiMenuItems );
 
 			editor.ui.add( 'AutoCorrect', CKEDITOR.UI_MENUBUTTON, {
-				label: 'AutoCorrect',
+				label: lang.toolbar,
 				modes: { wysiwyg: 1 },
-				toolbar: 'tools,20',
+				toolbar: 'spellchecker,20',
 				onRender: function() {
 					command.on( 'state', function() {
 						this.setState( command.state );
 					}, this );
 				},
 				onMenu: function() {
-					editor.getMenuItem( 'autoCorrectWhileTyping' ).label = isEnabled() ? 'Disable While Typing' : 'Enable While Typing';
+					editor.getMenuItem( 'autoCorrectWhileTyping' ).label = isEnabled() ? lang.disable : lang.enable;
 
 					return {
 						autoCorrectWhileTyping: CKEDITOR.TRISTATE_OFF,
@@ -105,8 +107,6 @@
 			};
 
 			editor.on( 'instanceReady', showInitialState );
-
-			var config = editor.config;
 
 			var isTyping = false;
 
