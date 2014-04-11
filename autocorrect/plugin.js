@@ -494,8 +494,7 @@
 			}
 
 			function getLastNumber(list) {
-				var start = parseInt(list.getAttribute('start') || 0, 10);
-				return start + list.getChildCount() - 1;
+				return list.$.start + list.getChildCount() - 1;
 			}
 
 			function replaceContentsWithList(listContents, type, attributes) {
