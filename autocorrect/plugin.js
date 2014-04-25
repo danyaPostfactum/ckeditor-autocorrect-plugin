@@ -11,6 +11,7 @@
 		requires: 'menubutton',
 		lang: 'en,ru',
 		icons: 'autocorrect',
+		hidpi: true, // %REMOVE_LINE_CORE%
 		init: function( editor ) {
 			var config = editor.config;
 			var lang = editor.lang.autocorrect;
