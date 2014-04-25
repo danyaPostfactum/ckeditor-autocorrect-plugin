@@ -10,7 +10,7 @@
 	CKEDITOR.plugins.add( 'autocorrect', {
 		requires: 'menubutton',
 		lang: 'en,ru',
-		icons: 'autocorrect',
+		icons: 'autocorrect', // %REMOVE_LINE_CORE%
 		hidpi: true, // %REMOVE_LINE_CORE%
 		init: function( editor ) {
 			var config = editor.config;
@@ -477,7 +477,7 @@
 			}
 
 			function replaceQuote(leftChar, quotes, range) {
-				var isClosingQuote = leftChar && '  -'.indexOf(leftChar) < 0;
+				var isClosingQuote = leftChar && '  -–—([{'.indexOf(leftChar) < 0;
 				var replacement = quotes[isClosingQuote ? 1 : 0];
 
 				beforeReplace();
