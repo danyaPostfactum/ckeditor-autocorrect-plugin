@@ -7,6 +7,40 @@
  */
 
 (function() {
+
+	var isBookmark = CKEDITOR.dom.walker.bookmark();
+
+	function CharacterIterator(range) {
+		var walker = new CKEDITOR.dom.walker( range );
+		walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_TEXT && !isBookmark(node); };
+		walker.current = range.startContainer;
+		this.walker = walker;
+		this.referenceNode = range.startContainer;
+		this.referenceCharacter = null;
+		this.referenceCharacterOffset = range.startOffset;
+		this._started = false;
+	}
+
+	CharacterIterator.prototype.nextCharacter = function() {
+	};
+
+	CharacterIterator.prototype.previousCharacter = function() {
+		if (!this._started) {
+			this.walker.previous();
+			this._started = true;
+		}
+		while (this.referenceCharacterOffset === 0) {
+			this.referenceNode = this.walker.previous();
+			if (!this.referenceNode)
+				return null;
+			this.referenceCharacterOffset = this.referenceNode.getText().length;
+		}
+		if (this.referenceCharacterOffset === 0)
+			return null;
+		var text = this.referenceNode.getText();
+		return text[--this.referenceCharacterOffset];
+	};
+
 	CKEDITOR.plugins.add( 'autocorrect', {
 		requires: 'menubutton',
 		lang: 'en,ru',
@@ -215,9 +249,8 @@
 			}
 
 			function replaceRangeContent(range, data) {
-				var node = range.startContainer;
-				var text = node.getText();
-				node.setText(text.substring(0, range.startOffset) + data + text.substring(range.endOffset));
+				range.deleteContents();
+				range.insertNode(new CKEDITOR.dom.text(data));
 			}
 
 			function replaceHyphenPairInWord(range) {
@@ -319,17 +352,17 @@
 			}
 
 			function retreivePrefix(range) {
-				if (range && range.startContainer && range.startContainer.$.data) {
-					var chars = '';
-					var startOffset = range.startOffset - 1;
-					var ch = range.startContainer.$.data.substring(startOffset, startOffset + 1);
-					while (ch && ch != ' ' && ch != ' ' && startOffset >= 0) {
-						chars = ch + chars;
-						ch = range.startContainer.$.data.substring(--startOffset, startOffset + 1);
-					}
-					return chars;
+				var walkerRange = new CKEDITOR.dom.range(editor.editable());
+				walkerRange.selectNodeContents(getBlockParent(range.startContainer));
+				var iterator = new CharacterIterator(walkerRange);
+				iterator.referenceNode = range.startContainer;
+				iterator.referenceCharacterOffset = range.startOffset;
+				var prefix = '';
+				var ch;
+				while ((ch = iterator.previousCharacter()) && ch != ' ' && ch != ' ') {
+					prefix = ch + prefix;
 				}
-				return '';
+				return prefix;
 			}
 
 			var bookmark;
@@ -354,9 +387,10 @@
 					return false;
 
 				beforeReplace();
-				var text = range.startContainer.getText();
-				range.startContainer.setText(text.substring(0, range.startOffset - prefix.length) + replacement + text.substring(range.startOffset));
-				range.setEnd(range.endContainer, range.startOffset + prefix.length - 1);
+				var sequenceRange = range.clone();
+				sequenceRange.setStart(range.startContainer, range.startOffset - prefix.length);
+				replaceRangeContent(sequenceRange, replacement);
+				// FIXME update cursor position
 				afterReplace();
 
 				return true;
