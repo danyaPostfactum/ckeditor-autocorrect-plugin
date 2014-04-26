@@ -204,6 +204,39 @@
 				return next;
 			}
 
+
+			function isWordPart(ch) {
+				return ch >= 'A' && ch <= 'Z'
+					|| ch >= 'a' && ch <= 'z'
+					|| ch >= 'а' && ch <= 'я'
+					|| ch >= 'А' && ch <= 'Я'
+					|| ch == 'ё' || ch == 'Ё'
+					|| ch >= '0' && ch <= '9';
+			}
+
+			function replaceRangeContent(range, data) {
+				var node = range.startContainer;
+				var text = node.getText();
+				node.setText(text.substring(0, range.startOffset) + data + text.substring(range.endOffset));
+			}
+
+			function replaceHyphenPairInWord(range) {
+				var prefix = retreivePrefix(range);
+				var hyphenPairIndex = prefix.lastIndexOf('--');
+				if (hyphenPairIndex < 0 || !isWordPart(prefix[hyphenPairIndex - 1]) || !(hyphenPairIndex + 2 == prefix.length || isWordPart(prefix[hyphenPairIndex + 2])))
+					return;
+
+				beforeReplace();
+				var dashPairRange = range.clone();
+				dashPairRange.setStart(range.startContainer, dashPairRange.startOffset - (prefix.length - hyphenPairIndex));
+				dashPairRange.setEnd(range.startContainer, dashPairRange.startOffset + 2);
+				replaceRangeContent(dashPairRange, '—');
+				// move cursor backwards 1 character
+				range.setStart(range.startContainer, range.startOffset - 1);
+				range.setEnd(range.endContainer, range.endOffset - 1);
+				afterReplace();
+			}
+
 			function replacePrefix(range, prefix, delimiter) {
 				// Format hyperlink
 				if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix, delimiter))
@@ -216,6 +249,9 @@
 				// Format ordinals
 				if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
 					return;
+
+				if (config.autocorrect_replaceHyphens)
+					replaceHyphenPairInWord(range);
 			}
 							// bulleted and numbered lists
 
@@ -242,15 +278,23 @@
 
 				var leftChar = range.startContainer.getText().substring(range.startOffset-1, range.startOffset);
 
-				// Replace hypen
-				// TODO improve it
+				// XXX Why The Word waits for right word input before hypen transformation?
 				if (config.autocorrect_replaceHyphens && leftChar == '-') {
-					var charBeforeHyphen = range.startContainer.getText().substring(range.startOffset-2, range.startOffset-1);
+					var text = range.startContainer.getText();
+					var sequence = leftChar;
+					var charBeforeHyphen = text.substring(range.startOffset - sequence.length - 1, range.startOffset - sequence.length);
+					if (charBeforeHyphen == '-') {
+						sequence = charBeforeHyphen + sequence;
+						charBeforeHyphen = text.substring(range.startOffset - sequence.length - 1, range.startOffset - sequence.length);
+					}
 					if (charBeforeHyphen == ' ' || charBeforeHyphen == ' ') {
+						var hypenRange = range.clone();
+						hypenRange.setStart(hypenRange.startContainer, hypenRange.startOffset - sequence.length);
 						var dash = config.autocorrect_dash;
 						beforeReplace();
-						var text = range.startContainer.getText();
-						range.startContainer.setText(text.substring(0, range.startOffset - 1) + dash + text.substring(range.startOffset));
+						replaceRangeContent(hypenRange, dash);
+						cursor.setStart(cursor.startContainer, cursor.startOffset - sequence.length + 1);
+						cursor.setEnd(cursor.endContainer, cursor.endOffset - sequence.length + 1);
 						afterReplace();
 					}
 				}
@@ -477,7 +521,7 @@
 			}
 
 			function replaceQuote(leftChar, quotes, range) {
-				var isClosingQuote = leftChar && '  -–—([{'.indexOf(leftChar) < 0;
+				var isClosingQuote = leftChar && '  –—([{'.indexOf(leftChar) < 0;
 				var replacement = quotes[isClosingQuote ? 1 : 0];
 
 				beforeReplace();
@@ -641,7 +685,7 @@ CKEDITOR.config.autocorrect_enabled = true;
  */
 // language specific
 
-CKEDITOR.config.autocorrect_replacementTable = {"--": "–", "-->": "→", "-+": "±", "->": "→", "...": "…", "(c)": "©", "(e)": "€", "(r)": "®", "(tm)": "™", "(o)": "˚", "+-": "±", "<-": "←", "<--": "←", "<-->": "↔", "<->": "↔", "<<": "«", ">>": "»", "~=": "≈", "1/2": "½", "1/4": "¼", "3/4": "¾"};
+CKEDITOR.config.autocorrect_replacementTable = {"-->": "→", "-+": "∓", "->": "→", "...": "…", "(c)": "©", "(e)": "€", "(r)": "®", "(tm)": "™", "(o)": "˚", "+-": "±", "<-": "←", "<--": "←", "<-->": "↔", "<->": "↔", "<<": "«", ">>": "»", "~=": "≈", "1/2": "½", "1/4": "¼", "3/4": "¾"};
 
 CKEDITOR.config.autocorrect_useReplacementTable = true;
 
