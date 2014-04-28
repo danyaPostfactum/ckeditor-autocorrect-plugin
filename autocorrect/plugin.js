@@ -143,14 +143,6 @@
 
 			var isTyping = false;
 
-			var horizontalRuleMarkers = ['-', '_'];
-			var bulletedListMarkers = ['\\*', '\\+', '•'];
-			var numberedListMarkers = ['[0-9]+', '[ivxlcdm]+', '[IVXLCDM]+', '[a-z]', '[A-Z]'];
-
-			var listItemContentPattern = '(?:.*?)[^\\.!,\\s](?:.*)';
-
-			var isBookmark = CKEDITOR.dom.walker.bookmark();
-
 			function skipBreaks(node, isBackwards) {
 				while (node && node.type == CKEDITOR.NODE_ELEMENT && node.getName() == 'br') {
 					node = isBackwards ? node.getPrevious() : node.getNext();
@@ -166,7 +158,16 @@
 				return ch === '.' || ch === ',' || ch === '!' || ch === '?' || ch === '/';
 			}
 
-			function correctAtCursor(cursor, isEnter) {
+			function isWordPart(ch) {
+				return ch >= 'A' && ch <= 'Z'
+					|| ch >= 'a' && ch <= 'z'
+					|| ch >= 'а' && ch <= 'я'
+					|| ch >= 'А' && ch <= 'Я'
+					|| ch == 'ё' || ch == 'Ё'
+					|| ch >= '0' && ch <= '9';
+			}
+
+			function moveCursorIntoTextNode(cursor) {
 				if (cursor.startContainer.type == CKEDITOR.NODE_ELEMENT) {
 					var startNode = cursor.startContainer.getChild(cursor.startOffset - 1);
 					// Firefox in some cases sets cursor after ending <br>
@@ -174,37 +175,38 @@
 					if (!startNode)
 						return;
 					cursor.setStart(startNode, startNode.getText().length);
-					cursor.setEnd(startNode, startNode.getText().length);
+					cursor.collapse(true);
 				}
+			}
 
-				var inputChar, leftChar;
-				// Handles special case of Enter key press
+			function correctAtCursor(cursor, isEnter) {
+				moveCursorIntoTextNode(cursor);
+
+				var input;
 				if (isEnter) {
-					inputChar = '';
-					leftChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
+					input = '';
 				} else {
-					inputChar = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
-					leftChar = cursor.startContainer.getText().substring(cursor.startOffset-2, cursor.startOffset - 1);
+					input = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
 				}
 
-				if (config.autocorrect_replaceDoubleQuotes && replaceDoubleQuote(inputChar, leftChar, cursor))
+				if (config.autocorrect_replaceDoubleQuotes && replaceDoubleQuote(cursor, input))
 					return;
 
-				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(inputChar, leftChar, cursor))
+				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(cursor, input))
 					return;
 
 				// bulleted and numbered lists
-				if (isWhitespace(inputChar))
-					autoCorrectOnWhitespace(cursor);
+				if (isWhitespace(input))
+					autoCorrectOnWhitespace(cursor, input);
 
-				if (isEnter || isPunctuation(inputChar) || isWhitespace(inputChar))
-					autoCorrectOnDelimiter(cursor, inputChar);
+				if (isEnter || isPunctuation(input) || isWhitespace(input))
+					autoCorrectOnDelimiter(cursor, input);
 			}
 
 			function correctTextNode(node, isBlockEnding) {
 				var cursor = new CKEDITOR.dom.range(editor.editable());
 				cursor.setStart(node, 0);
-				cursor.setEnd(node, 0);
+				cursor.collapse(true);
 				while (cursor.startOffset < cursor.startContainer.getText().length) {
 					cursor.setStart(cursor.startContainer, cursor.startOffset + 1);
 					cursor.setEnd(cursor.startContainer, cursor.startOffset);
@@ -236,131 +238,133 @@
 				return next;
 			}
 
-
-			function isWordPart(ch) {
-				return ch >= 'A' && ch <= 'Z'
-					|| ch >= 'a' && ch <= 'z'
-					|| ch >= 'а' && ch <= 'я'
-					|| ch >= 'А' && ch <= 'Я'
-					|| ch == 'ё' || ch == 'Ё'
-					|| ch >= '0' && ch <= '9';
-			}
-
 			function replaceRangeContent(range, data) {
+				// FIXME protect cursor bookmark from being deleted
 				range.deleteContents();
 				range.insertNode(new CKEDITOR.dom.text(data));
 			}
 
-			function replaceHyphenPairInWord(range) {
-				var prefix = retreivePrefix(range);
-				var hyphenPairIndex = prefix.lastIndexOf('--');
-				if (hyphenPairIndex < 0 || !isWordPart(prefix[hyphenPairIndex - 1]) || !(hyphenPairIndex + 2 == prefix.length || isWordPart(prefix[hyphenPairIndex + 2])))
-					return;
+			function find(needle, startNode, startCharacterOffset, delimiters) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(startNode));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = startNode;
+				iterator.referenceCharacterOffset = startCharacterOffset;
+				var ch;
+				var i = needle.length - 1;
+				var range = new CKEDITOR.dom.range(editor.editable());
+				while ((ch = iterator.previousCharacter()) && !(ch in delimiters)) {
+					if (ch == needle[i]) {
+						if (i == needle.length - 1)
+							range.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset + 1);
+						i--;
+						if (i < 0)
+							break;
+					} else {
+						i = needle.length - 1;
+					}
+				}
+				if (i >= 0)
+					return null;
+				range.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+				return range;
+			}
+
+			function replaceHyphenPairInWord(cursor, delimiter) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				for (var i = 0; i < delimiter.length; i++)
+					iterator.previousCharacter();
+
+				var hypenPairRange = find('--', iterator.referenceNode, iterator.referenceCharacterOffset, {' ': true, ' ': true});
+				if (!hypenPairRange)
+					return false;
+
+
+				var charBeforeHypens = iterator.previousCharacter();
+
+				if (!charBeforeHypens || !isWordPart(charBeforeHypens))
+					return false;
+
+				iterator.referenceNode = hypenPairRange.endContainer;
+				iterator.referenceCharacterOffset = hypenPairRange.endOffset;
+
+				var charAfterHypens = iterator.nextCharacter();
+
+				if (charAfterHypens && !isWordPart(charAfterHypens))
+					return false;
 
 				beforeReplace();
-				var dashPairRange = range.clone();
-				dashPairRange.setStart(range.startContainer, dashPairRange.startOffset - (prefix.length - hyphenPairIndex));
-				dashPairRange.setEnd(range.startContainer, dashPairRange.startOffset + 2);
-				replaceRangeContent(dashPairRange, '—');
-				// move cursor backwards 1 character
-				range.setStart(range.startContainer, range.startOffset - 1);
-				range.setEnd(range.endContainer, range.endOffset - 1);
+				var bookmark = cursor.createBookmark();
+				replaceRangeContent(hypenPairRange, '—');
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 			}
 
-			function replacePrefix(range, prefix, delimiter) {
-				// Format hyperlink
-				if (config.autocorrect_recognizeUrls && formatHyperlink(range, prefix, delimiter))
+			function replaceHyphens(cursor, input) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				for (var i = 0; i < input.length; i++)
+					iterator.previousCharacter();
+
+				var hypensRange = new CKEDITOR.dom.range(editor.editable());
+				hypensRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+
+				var leftChar = iterator.previousCharacter();
+				if (leftChar !== '-')
+					return false;
+
+				hypensRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+				var charBeforeHyphen = iterator.previousCharacter();
+				if (charBeforeHyphen == '-') {
+					hypensRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+					charBeforeHyphen = iterator.previousCharacter();
+				}
+
+				if (!isWhitespace(charBeforeHyphen))
+					return false;
+
+				var dash = config.autocorrect_dash;
+				beforeReplace();
+				var bookmark = cursor.createBookmark();
+				replaceRangeContent(hypensRange, dash);
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
+				afterReplace();
+			}
+
+			function autoCorrectOnWhitespace(cursor, inputChar) {
+				if (config.autocorrect_formatBulletedLists && formatBulletedList(cursor, inputChar))
 					return;
 
-				// Autoreplace using replacement table
-				if (config.autocorrect_useReplacementTable && replaceSequence(range, prefix))
-					return;
-
-				// Format ordinals
-				if (config.autocorrect_formatOrdinals && formatOrdinals(range, prefix))
+				if (config.autocorrect_formatNumberedLists && formatNumberedList(cursor, inputChar))
 					return;
 
 				if (config.autocorrect_replaceHyphens)
-					replaceHyphenPairInWord(range);
-			}
-							// bulleted and numbered lists
-
-			function autoCorrectOnWhitespace(cursor) {
-				var range = new CKEDITOR.dom.range(editor.editable());
-				range.setStart(cursor.startContainer, cursor.startOffset - 1);
-				range.setEnd(cursor.endContainer, cursor.endOffset - 1);
-
-				var offset = range.endOffset;
-				var prefix = retreivePrefix(range);
-
-				if (!prefix)
-					return;
-
-				if (config.autocorrect_formatBulletedLists && formatBulletedList(range, prefix))
-					return;
-
-				if (config.autocorrect_formatNumberedLists && formatNumberedList(range, prefix))
-					return;
-
-				var diff = offset - range.endOffset;
-				cursor.setStart(cursor.startContainer, cursor.startOffset + diff);
-				cursor.setEnd(cursor.endContainer, cursor.endOffset + diff);
-
-				var leftChar = range.startContainer.getText().substring(range.startOffset-1, range.startOffset);
-
-				// XXX Why The Word waits for right word input before hypen transformation?
-				if (config.autocorrect_replaceHyphens && leftChar == '-') {
-					var text = range.startContainer.getText();
-					var sequence = leftChar;
-					var charBeforeHyphen = text.substring(range.startOffset - sequence.length - 1, range.startOffset - sequence.length);
-					if (charBeforeHyphen == '-') {
-						sequence = charBeforeHyphen + sequence;
-						charBeforeHyphen = text.substring(range.startOffset - sequence.length - 1, range.startOffset - sequence.length);
-					}
-					if (charBeforeHyphen == ' ' || charBeforeHyphen == ' ') {
-						var hypenRange = range.clone();
-						hypenRange.setStart(hypenRange.startContainer, hypenRange.startOffset - sequence.length);
-						var dash = config.autocorrect_dash;
-						beforeReplace();
-						replaceRangeContent(hypenRange, dash);
-						cursor.setStart(cursor.startContainer, cursor.startOffset - sequence.length + 1);
-						cursor.setEnd(cursor.endContainer, cursor.endOffset - sequence.length + 1);
-						afterReplace();
-					}
-				}
+					replaceHyphens(cursor, inputChar);
 			}
 
 			function autoCorrectOnDelimiter(cursor, delimiter) {
-				var range = new CKEDITOR.dom.range(editor.editable());
-				range.setStart(cursor.startContainer, cursor.startOffset - delimiter.length);
-				range.setEnd(cursor.endContainer, cursor.endOffset - delimiter.length);
-
-				var offset = range.endOffset;
-				var prefix = retreivePrefix(range);
-
-				if (!prefix)
+				if (config.autocorrect_recognizeUrls && formatHyperlink(cursor, delimiter))
 					return;
 
-				replacePrefix(range, prefix, delimiter);
+				if (config.autocorrect_useReplacementTable)
+					replaceSequence(cursor, delimiter);
 
-				var diff = offset - range.endOffset;
-				cursor.setStart(cursor.startContainer, cursor.startOffset + diff);
-				cursor.setEnd(cursor.endContainer, cursor.endOffset + diff);
-			}
+				if (config.autocorrect_formatOrdinals)
+					formatOrdinals(cursor, delimiter);
 
-			function retreivePrefix(range) {
-				var walkerRange = new CKEDITOR.dom.range(editor.editable());
-				walkerRange.selectNodeContents(getBlockParent(range.startContainer));
-				var iterator = new CharacterIterator(walkerRange);
-				iterator.referenceNode = range.startContainer;
-				iterator.referenceCharacterOffset = range.startOffset;
-				var prefix = '';
-				var ch;
-				while ((ch = iterator.previousCharacter()) && ch != ' ' && ch != ' ') {
-					prefix = ch + prefix;
-				}
-				return prefix;
+				if (config.autocorrect_replaceHyphens)
+					replaceHyphenPairInWord(cursor, delimiter);
 			}
 
 			var bookmark;
@@ -379,54 +383,128 @@
 			}
 
 			var replacementTable = config.autocorrect_replacementTable;
-			function replaceSequence(range, prefix) {
-				var replacement = replacementTable[prefix];
+			function replaceSequence(cursor, delimiter) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				for (var i = 0; i < delimiter.length; i++)
+					iterator.previousCharacter();
+
+				var replacement;
+				var match;
+				var matchRange = new CKEDITOR.dom.range(editor.editable());
+				matchRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				var sequence = '';
+				var ch;
+				while ((ch = iterator.previousCharacter()) && !isWhitespace(ch)) {
+					sequence = ch + sequence;
+					if (sequence in replacementTable) {
+						match = sequence;
+						replacement = replacementTable[match];
+						matchRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+					}
+				}
+
 				if (!replacement)
 					return false;
 
 				beforeReplace();
-				var sequenceRange = range.clone();
-				sequenceRange.setStart(range.startContainer, range.startOffset - prefix.length);
-				replaceRangeContent(sequenceRange, replacement);
-				// FIXME update cursor position
+				var bookmark = cursor.createBookmark();
+				replaceRangeContent(matchRange, replacement);
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
 				return true;
 			}
 
-			var urlRe = /(http:|https:|ftp:|mailto:|tel:|skype:|www\.)([^\s\.,?!#]|[\.,?!#](?=[^\s\.,?!#]))+/i;
-			function formatHyperlink(range, prefix, delimiter) {
+			var urlRe = /^(http:|https:|ftp:|mailto:|tel:|skype:|www\.).+$/i;
+			function formatHyperlink(cursor, delimiter) {
 				if (isPunctuation(delimiter))
 					return;
-				var match = prefix.match(urlRe);
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				for (var i = 0; i < delimiter.length; i++)
+					iterator.previousCharacter();
+
+				var matchRange = new CKEDITOR.dom.range(editor.editable());
+				matchRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				var tail = true;
+				var match = '';
+				var ch;
+				while ((ch = iterator.previousCharacter()) && ch != ' ' && ch != ' ') {
+					// skip trailing punctuation
+					if (tail && ch.match(/[\.,?!#]/)) {
+						matchRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+						continue;
+					}
+					match = ch + match;
+					tail = false;
+					matchRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+				}
+
+				match = match.match(urlRe);
+
 				if (!match)
 					return false;
 
 				var url = match[0];
-				var href = match[1] === 'www.' ? 'http://' + url : url;
+				var href = match[1].toLowerCase() === 'www.' ? 'http://' + url : url;
 
 				beforeReplace();
+				var bookmark = cursor.createBookmark();
 				var attributes = {'data-cke-saved-href': href, href: href};
 				var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
 				style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
-				range.setStart(range.startContainer, range.startOffset - prefix.length);
-				range.setEnd(range.startContainer, range.startOffset + url.length);
-				style.applyToRange( range.clone() );
+				style.applyToRange( matchRange );
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
 				return true;
 			}
 
-			var suffixes = {st: true, nd: true, rd: true, th: true};
-			function formatOrdinals(range, prefix) {
-				var suffix = prefix.slice(-2);
+			var suffixes = {'st': true, 'nd': true, 'rd': true, 'th': true};
+			function formatOrdinals(cursor, delimiter) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				for (var i = 0; i < delimiter.length; i++)
+					iterator.previousCharacter();
+
+				var suffixRange = new CKEDITOR.dom.range(editor.editable());
+				suffixRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				var suffix = '';
+				var ch;
+				for (var i = 0; i < 2; i++) {
+					ch = iterator.previousCharacter();
+					if (!ch)
+						break;
+					suffix = ch + suffix;
+				}
 				if (!(suffix in suffixes))
 					return false;
+				suffixRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
 
-				var number = prefix.slice(0, -2);
-				var numberRe = /^\d+$/;
-				if (!numberRe.test(number))
-					return false;
+				var number = '';
+				while (ch = iterator.previousCharacter()) {
+					if (ch >= '0' && ch <= '9')
+						number = ch + number;
+					else if (isWordPart(ch))
+						return false;
+					else
+						break;
+				}
 
 				var n = number % 100;
 				if (n > 9 && n < 20) {
@@ -448,15 +526,17 @@
 				}
 
 				beforeReplace();
+				var bookmark = cursor.createBookmark();
 				var style = new CKEDITOR.style({ element: 'sup' } );
-				range.setStart(range.startContainer, range.startOffset - suffix.length);
-				range.setEnd(range.startContainer, range.startOffset + suffix.length);
-				style.applyToRange( range.clone() );
+				style.applyToRange( suffixRange );
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
 				return true;
 			}
 
+			var horizontalRuleMarkers = ['-', '_'];
 			var horizontalRuleRe = new RegExp('^' + '(' + horizontalRuleMarkers.map(function(marker){ return marker + '{3,}';}).join('|') + ')' + '$');
 			function insertHorizontalRule(parent, content) {
 				var match = content.match(horizontalRuleRe);
@@ -469,97 +549,146 @@
 				return true;
 			}
 
-			var bulletedListItemRe = new RegExp('^' + '(' + bulletedListMarkers.join('|') + ')' + '$');
-			function formatBulletedList(range, prefix) {
-				if (range.startContainer.getPrevious() || range.startOffset > prefix.length )
+			var bulletedListMarkers = ['*', '+', '•'];
+			function formatBulletedList(cursor, input) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				var markerRange = new CKEDITOR.dom.range(editor.editable());
+				markerRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				for (var i = 0; i < input.length; i++)
+					iterator.previousCharacter();
+
+				var marker = iterator.previousCharacter();
+
+				if (!marker || bulletedListMarkers.indexOf(marker) < 0)
 					return false;
 
-				var match = prefix.match(bulletedListItemRe);
-				if (!match)
+				markerRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+
+				if (iterator.previousCharacter())
 					return false;
 
-				var parent = getBlockParent(range.startContainer);
-				var marker = match[1];
-
-				var firstChild = parent.getFirst();
-				beforeReplace();
-				firstChild.setText(firstChild.getText().substring(marker.length + 1));
+				var parent = getBlockParent(cursor.startContainer);
 				var previous = parent.getPrevious();
+
+				beforeReplace();
+				var bookmark = cursor.createBookmark();
+				markerRange.deleteContents();
 				if (!isTyping && previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ul') {
 					appendContentsToList(parent, previous);
 				} else {
 					replaceContentsWithList([parent], 'ul', null);
 				}
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
 				return true;
 			}
 
-			var numberedListItemRe = new RegExp('^' + '(' + numberedListMarkers.join('|') + ')' + '[\\.\\)]' + '$');
-			function formatNumberedList(range, prefix) {
-				if (range.startContainer.getPrevious() || range.startOffset > prefix.length )
+			function formatNumberedList(cursor, input) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				var markerRange = new CKEDITOR.dom.range(editor.editable());
+				markerRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				for (var i = 0; i < input.length; i++)
+					iterator.previousCharacter();
+
+				var delimiter = iterator.previousCharacter();
+				if (!(delimiter in {'.': true, ')': true}))
 					return false;
 
-				var match = prefix.match(numberedListItemRe);
-				if (!match)
-					return false;
+				var start = '';
+				var ch;
+				while ((ch = iterator.previousCharacter()) && ch != ' ' && ch != ' ') {
+					start = ch + start;
+					markerRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+				}
 
-				var parent = getBlockParent(range.startContainer);
-				var start = match[1];
+				var parent = getBlockParent(cursor.startContainer);
 				var type;
-				if (start.match(/\d/))
+				if (start.match(/^[0-9]+$/))
 					type = '1';
-				else if (start.match(/[ivxlcdm]+/))
+				else if (start.match(/^[ivxlcdm]+$/))
 					type = 'i';
-				else if (start.match(/[IVXLCDM]+/))
+				else if (start.match(/^[IVXLCDM]+$/))
 					type = 'I';
-				else if (start.match(/[a-z]/))
+				else if (start.match(/^[a-z]$/))
 					type = 'a';
-				else if (start.match(/[A-Z]/))
+				else if (start.match(/^[A-Z]$/))
 					type = 'A';
+				else
+					return false;
+
+				if (iterator.previousCharacter())
+					return false;
+
+				var startNumber = toNumber(start, type);
+
+				var parent = getBlockParent(cursor.startContainer);
+				var previous = parent.getPrevious();
 
 				beforeReplace();
-				var firstChild = parent.getFirst();
-				firstChild.setText(firstChild.getText().substring(start.length + 2));
-				var startNumber = toNumber(start, type);
-				var previous = parent.getPrevious();
+				var bookmark = cursor.createBookmark();
+				markerRange.deleteContents();
 				if (!isTyping && previous && previous.type == CKEDITOR.NODE_ELEMENT && previous.getName() == 'ol' && previous.getAttribute('type') == type && getLastNumber(previous) == startNumber - 1) {
 					appendContentsToList(parent, previous);
 				} else {
 					var attributes = startNumber === 1 ? {type: type} : {type: type, start: startNumber};
 					replaceContentsWithList([parent], 'ol', attributes);
 				}
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
 				return true;
 			}
 
 			var doubleQuotes = config.autocorrect_doubleQuotes;
-			function replaceDoubleQuote(inputChar, leftChar, quoteRange) {
-				if (inputChar !== '"')
+			function replaceDoubleQuote(cursor, input) {
+				if (input !== '"')
 					return false;
 
-				replaceQuote(leftChar, doubleQuotes, quoteRange);
+				replaceQuote(cursor, doubleQuotes);
 				return true;
 			}
 
 			var singleQuotes = config.autocorrect_singleQuotes;
-			function replaceSingleQuote(inputChar, leftChar, quoteRange) {
-				if (inputChar !== '\'')
+			function replaceSingleQuote(cursor, input) {
+				if (input !== '\'')
 					return false;
 
-				replaceQuote(leftChar, singleQuotes, quoteRange);
+				replaceQuote(cursor, singleQuotes);
 				return true;
 			}
 
-			function replaceQuote(leftChar, quotes, range) {
-				var isClosingQuote = leftChar && '  –—([{'.indexOf(leftChar) < 0;
-				var replacement = quotes[isClosingQuote ? 1 : 0];
+			function replaceQuote(cursor, quotes) {
+				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
+				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
+				var iterator = new CharacterIterator(iteratorRange);
+				iterator.referenceNode = cursor.startContainer;
+				iterator.referenceCharacterOffset = cursor.startOffset;
+
+				var quoteRange = new CKEDITOR.dom.range(editor.editable());
+				quoteRange.setEnd(iterator.referenceNode, iterator.referenceCharacterOffset);
+				iterator.previousCharacter();
+				quoteRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
+
+				var leftChar = iterator.previousCharacter();
+
+				var isClosingQuote = leftChar ? '  –—([{'.indexOf(leftChar) < 0 : false;
+				var replacement = quotes[Number(isClosingQuote)];
 
 				beforeReplace();
-				var text = range.startContainer.getText();
-				range.startContainer.setText(text.substring(0, range.endOffset - 1) + replacement + text.substring(range.endOffset));
-				range.setStart(range.startContainer, range.endOffset);
+				replaceRangeContent(quoteRange, replacement);
 				afterReplace();
 			}
 
