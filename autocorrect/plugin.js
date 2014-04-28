@@ -18,18 +18,16 @@
 		this.referenceNode = range.startContainer;
 		this.referenceCharacter = null;
 		this.referenceCharacterOffset = range.startOffset;
-		this._started = false;
 	}
 
 	CharacterIterator.prototype.nextCharacter = function() {
+		// TODO
+		return null;
 	};
 
 	CharacterIterator.prototype.previousCharacter = function() {
-		if (!this._started) {
-			this.walker.previous();
-			this._started = true;
-		}
 		while (this.referenceCharacterOffset === 0) {
+			this.walker.current = this.referenceNode;
 			this.referenceNode = this.walker.previous();
 			if (!this.referenceNode)
 				return null;
@@ -37,8 +35,8 @@
 		}
 		if (this.referenceCharacterOffset === 0)
 			return null;
-		var text = this.referenceNode.getText();
-		return text[--this.referenceCharacterOffset];
+		this.referenceCharacter = this.referenceNode.getText()[--this.referenceCharacterOffset];
+		return this.referenceCharacter;
 	};
 
 	CKEDITOR.plugins.add( 'autocorrect', {
