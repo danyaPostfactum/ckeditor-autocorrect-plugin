@@ -241,8 +241,17 @@
 			}
 
 			function replaceRangeContent(range, data) {
-				// FIXME protect cursor bookmark from being deleted
+				var walker = new CKEDITOR.dom.walker( range );
+				walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_ELEMENT && isBookmark(node); };
+				var bm;
+				var bookmarks = [];
+				while (bm = walker.next()) {
+					bookmarks.push(bm);
+				}
 				range.deleteContents();
+				for (var i = 0; i < bookmarks.length; i++) {
+					range.insertNode(bookmarks[i]);
+				}
 				range.insertNode(new CKEDITOR.dom.text(data));
 			}
 
