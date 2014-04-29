@@ -553,6 +553,11 @@
 
 			var bulletedListMarkers = ['*', '+', '•'];
 			function formatBulletedList(cursor, input) {
+				var parent = getBlockParent(cursor.startContainer);
+
+				if (parent.getName() !== 'p')
+					return;
+
 				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
 				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
 				var iterator = new CharacterIterator(iteratorRange);
@@ -574,7 +579,6 @@
 				if (iterator.previousCharacter())
 					return false;
 
-				var parent = getBlockParent(cursor.startContainer);
 				var previous = parent.getPrevious();
 
 				beforeReplace();
@@ -593,6 +597,11 @@
 			}
 
 			function formatNumberedList(cursor, input) {
+				var parent = getBlockParent(cursor.startContainer);
+
+				if (parent.getName() !== 'p')
+					return;
+
 				var iteratorRange = new CKEDITOR.dom.range(editor.editable());
 				iteratorRange.selectNodeContents(getBlockParent(cursor.startContainer));
 				var iterator = new CharacterIterator(iteratorRange);
@@ -615,7 +624,6 @@
 					markerRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
 				}
 
-				var parent = getBlockParent(cursor.startContainer);
 				var type;
 				if (start.match(/^[0-9]+$/))
 					type = '1';
