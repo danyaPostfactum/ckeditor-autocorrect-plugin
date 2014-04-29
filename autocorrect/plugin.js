@@ -146,7 +146,7 @@
 			var isTyping = false;
 
 			function skipBreaks(node, isBackwards) {
-				while (node && node.type == CKEDITOR.NODE_ELEMENT && node.getName() == 'br') {
+				while (node && ((node.type == CKEDITOR.NODE_ELEMENT && node.getName() == 'br') || isBookmark(node))) {
 					node = isBackwards ? node.getPrevious() : node.getNext();
 				}
 				return node;
@@ -171,12 +171,18 @@
 
 			function moveCursorIntoTextNode(cursor) {
 				if (cursor.startContainer.type == CKEDITOR.NODE_ELEMENT) {
-					var startNode = cursor.startContainer.getChild(cursor.startOffset - 1);
+					var startNode = cursor.startContainer.getChild(cursor.startOffset);
 					// Firefox in some cases sets cursor after ending <br>
 					startNode = skipBreaks(startNode, true);
-					if (!startNode)
-						return;
-					cursor.setStart(startNode, startNode.getText().length);
+					if (startNode) {
+						while (startNode.type == CKEDITOR.NODE_ELEMENT) {
+							startNode = startNode.getFirst();
+						}
+					} else {
+						startNode = new CKEDITOR.dom.text('');
+						cursor.insertNode(startNode);
+					}
+					cursor.setStart(startNode, 0);
 					cursor.collapse(true);
 				}
 			}
