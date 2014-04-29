@@ -12,7 +12,7 @@
 
 	function CharacterIterator(range) {
 		var walker = new CKEDITOR.dom.walker( range );
-		walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_TEXT && !isBookmark(node); };
+		walker.evaluator = function( node ) { return (node.type === CKEDITOR.NODE_TEXT && !isBookmark(node)) || (node.type === CKEDITOR.NODE_ELEMENT && node.getName() == 'br'); };
 		walker.current = range.startContainer;
 		this.walker = walker;
 		this.referenceNode = range.startContainer;
@@ -30,6 +30,8 @@
 			this.walker.current = this.referenceNode;
 			this.referenceNode = this.walker.previous();
 			if (!this.referenceNode)
+				return null;
+			if (this.referenceNode.type === CKEDITOR.NODE_ELEMENT && this.referenceNode.getName() == 'br')
 				return null;
 			this.referenceCharacterOffset = this.referenceNode.getText().length;
 		}
