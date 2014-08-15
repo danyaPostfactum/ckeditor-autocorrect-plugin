@@ -8,6 +8,15 @@
 
 (function() {
 
+	var autocorrect = CKEDITOR.plugins.autocorrect = {
+		getOption: function(key) {
+			return CKEDITOR.config['autocorrect_' + key];
+		},
+		setOption: function(key, value) {
+			CKEDITOR.config['autocorrect_' + key] = value;
+		}
+	};
+
 	var isBookmark = CKEDITOR.dom.walker.bookmark();
 
 	function arrayToMap(array) {
@@ -45,6 +54,9 @@
 		if (this.referenceCharacterOffset === 0)
 			return null;
 		this.referenceCharacter = this.referenceNode.getText()[--this.referenceCharacterOffset];
+		// Sometimes Chrome inserts U+200B Zero Width Space
+		// if (this.referenceCharacter == String.fromCharCode(8203))
+		// 	return this.previousCharacter();
 		return this.referenceCharacter;
 	};
 
@@ -78,7 +90,7 @@
 					while (node = walker.next()) {
 						var next = getNext(node);
 						var parent = getBlockParent(node);
-						correctTextNode(node, (parent.isBlockBoundary() && !next) || next && next.type === CKEDITOR.NODE_ELEMENT && next.getName() === 'br');
+						walker.current = correctTextNode(node, (parent.isBlockBoundary() && !next) || next && next.type === CKEDITOR.NODE_ELEMENT && next.getName() === 'br');
 						if (parent.getName() === 'p' && !skipBreaks(next)) {
 							correctParagraph(parent);
 						}
@@ -102,6 +114,11 @@
 				return command.state === CKEDITOR.TRISTATE_ON;
 			};
 
+			var optionsCommand = editor.addCommand( 'autocorrectOptions', new CKEDITOR.dialogCommand( 'autocorrectOptions' ) );
+			optionsCommand.canUndo = false;
+			optionsCommand.readOnly = 1;
+
+			CKEDITOR.dialog.add( 'autocorrectOptions', this.path + 'dialogs/options.js' );
 
 			var menuGroup = 'autocorrectButton';
 			editor.addMenuGroup( menuGroup );
@@ -117,8 +134,14 @@
 			};
 
 			uiMenuItems.autoCorrectNow = {
-				label: lang.apply,
+				label: lang.autocorrectNow,
 				command: 'autocorrect',
+				group: menuGroup
+			};
+
+			uiMenuItems.autocorrectOptions = {
+				label: lang.options,
+				command: 'autocorrectOptions',
 				group: menuGroup
 			};
 
@@ -138,7 +161,8 @@
 
 					return {
 						autoCorrectWhileTyping: CKEDITOR.TRISTATE_OFF,
-						autoCorrectNow: CKEDITOR.TRISTATE_OFF
+						autoCorrectNow: CKEDITOR.TRISTATE_OFF,
+						autocorrectOptions: CKEDITOR.TRISTATE_OFF
 					};
 				}
 			});
@@ -151,6 +175,10 @@
 			editor.on( 'instanceReady', showInitialState );
 
 			var isTyping = false;
+
+			function getOption(key) {
+				return autocorrect.getOption(isTyping ? key + 'AsYouType' : key);
+			}
 
 			function skipBreaks(node, isBackwards) {
 				while (node && ((node.type == CKEDITOR.NODE_ELEMENT && node.getName() == 'br') || isBookmark(node))) {
@@ -191,10 +219,15 @@
 
 			function moveCursorIntoTextNode(cursor) {
 				if (cursor.startContainer.type == CKEDITOR.NODE_ELEMENT) {
-					var startNode = cursor.startContainer.getChild(cursor.startOffset);
-					// Firefox in some cases sets cursor after ending <br>
-					startNode = skipBreaks(startNode, true);
+					var rawStartNode = cursor.startContainer.getChild(cursor.startOffset);
+					var startOffset = 0;
+					// Skip ending <br>'s in Firefox, skip bookmark
+					var startNode = skipBreaks(rawStartNode, true);
 					if (startNode) {
+						if (startNode != rawStartNode) {
+							// We moved outside bookmark to the end of previous text node
+							startOffset = startNode.getText().length;
+						}
 						while (startNode.type == CKEDITOR.NODE_ELEMENT) {
 							startNode = startNode.getFirst();
 						}
@@ -202,7 +235,7 @@
 						startNode = new CKEDITOR.dom.text('');
 						cursor.insertNode(startNode);
 					}
-					cursor.setStart(startNode, 0);
+					cursor.setStart(startNode, startOffset);
 					cursor.collapse(true);
 				}
 			}
@@ -211,13 +244,13 @@
 				moveCursorIntoTextNode(cursor);
 				var input = cursor.startContainer.getText().substring(cursor.startOffset-1, cursor.startOffset);
 
-				if (config.autocorrect_replaceHyphens && isPairOpenCharacter(input))
+				if (getOption('replaceHyphens') && isPairOpenCharacter(input))
 					replaceHyphenPairInWord(cursor, input);
 
-				if (config.autocorrect_replaceDoubleQuotes && replaceDoubleQuote(cursor, input))
+				if (getOption('smartQuotes') && replaceDoubleQuote(cursor, input))
 					return;
 
-				if (config.autocorrect_replaceSingleQuotes && replaceSingleQuote(cursor, input))
+				if (getOption('smartQuotes') && replaceSingleQuote(cursor, input))
 					return;
 
 				if (isWhitespace(input))
@@ -230,7 +263,7 @@
 			function correctOnEnter(cursor) {
 				moveCursorIntoTextNode(cursor);
 
-				if (config.autocorrect_replaceHyphens)
+				if (getOption('replaceHyphens'))
 					replaceHyphens(cursor, '');
 
 				autoCorrectOnDelimiter(cursor, '');
@@ -249,6 +282,7 @@
 						correctOnEnter(cursor);
 					}
 				}
+				return cursor.startContainer;
 
 			}
 
@@ -259,8 +293,8 @@
 				// FIXME this way is wrong
 				var content = p.getText();
 
-				if (config.autocorrect_createHorizontalRules && insertHorizontalRule(p, content))
-					return;
+				if (getOption('createHorizontalRules'))
+					insertHorizontalRule(p, content);
 			}
 
 			function getNext(node) {
@@ -373,27 +407,27 @@
 			}
 
 			function autoCorrectOnWhitespace(cursor, inputChar) {
-				if (config.autocorrect_formatBulletedLists && formatBulletedList(cursor, inputChar))
+				if (getOption('formatBulletedLists') && formatBulletedList(cursor, inputChar))
 					return;
 
-				if (config.autocorrect_formatNumberedLists && formatNumberedList(cursor, inputChar))
+				if (getOption('formatNumberedLists') && formatNumberedList(cursor, inputChar))
 					return;
 
-				if (config.autocorrect_replaceHyphens)
+				if (getOption('replaceHyphens'))
 					replaceHyphens(cursor, inputChar);
 			}
 
 			function autoCorrectOnDelimiter(cursor, delimiter) {
-				if (config.autocorrect_recognizeUrls && formatHyperlink(cursor, delimiter))
+				if (getOption('recognizeUrls') && formatHyperlink(cursor, delimiter))
 					return;
 
 				if (config.autocorrect_useReplacementTable)
 					replaceSequence(cursor, delimiter);
 
-				if (config.autocorrect_formatOrdinals)
+				if (getOption('formatOrdinals'))
 					formatOrdinals(cursor, delimiter);
 
-				if (config.autocorrect_replaceHyphens)
+				if (getOption('replaceHyphens'))
 					replaceHyphenPairInWord(cursor, delimiter);
 			}
 
@@ -728,7 +762,10 @@
 				var replacement = quotes[Number(isClosingQuote)];
 
 				beforeReplace();
+				var bookmark = cursor.createBookmark();
 				replaceRangeContent(quoteRange, replacement);
+				cursor.moveToBookmark(bookmark);
+				moveCursorIntoTextNode(cursor);
 				afterReplace();
 			}
 
@@ -829,11 +866,11 @@
 			}
 
 			editor.on( 'key', function( event ) {
+				if (event.data.keyCode != 2228237 && event.data.keyCode != 13)
+					return;
 				if (!isEnabled())
 					return;
 				if (editor.mode !== 'wysiwyg')
-					return;
-				if (event.data.keyCode != 2228237 && event.data.keyCode != 13)
 					return;
 
 				var cursor = editor.getSelection().getRanges().shift();
@@ -856,9 +893,9 @@
 
 			editor.on( 'contentDom', function() {
 				editor.editable().on( 'keypress', function( event ) {
-					if (!isEnabled())
+					if ( event.data.$.charCode === 0 )
 						return;
-					if ( event.data.$.ctrlKey || event.data.$.metaKey )
+					if (!isEnabled())
 						return;
 
 					setTimeout(function() {
@@ -872,43 +909,53 @@
 		}
 	});
 
-	CKEDITOR.plugins.autoreplace = {};
-
 })();
 
 
-CKEDITOR.config.autocorrect_enabled = true;
 /**
  * 
  *
  * @cfg
  * @member CKEDITOR.config
  */
+CKEDITOR.config.autocorrect_enabled = true;
 // language specific
-
 CKEDITOR.config.autocorrect_replacementTable = {"-->": "→", "-+": "∓", "->": "→", "...": "…", "(c)": "©", "(e)": "€", "(r)": "®", "(tm)": "™", "(o)": "˚", "+-": "±", "<-": "←", "<--": "←", "<-->": "↔", "<->": "↔", "<<": "«", ">>": "»", "~=": "≈", "1/2": "½", "1/4": "¼", "3/4": "¾"};
 
 CKEDITOR.config.autocorrect_useReplacementTable = true;
+
+CKEDITOR.config.autocorrect_recognizeUrlsAsYouType = true;
 
 CKEDITOR.config.autocorrect_recognizeUrls = true;
 // language specific
 CKEDITOR.config.autocorrect_dash = '–';
 
+CKEDITOR.config.autocorrect_replaceHyphensAsYouType = true;
+
 CKEDITOR.config.autocorrect_replaceHyphens = true;
+
+CKEDITOR.config.autocorrect_formatOrdinalsAsYouType = true;
 
 CKEDITOR.config.autocorrect_formatOrdinals = true;
 
-CKEDITOR.config.autocorrect_replaceSingleQuotes = true;
 // language specific
 CKEDITOR.config.autocorrect_singleQuotes = "‘’";
 
-CKEDITOR.config.autocorrect_replaceDoubleQuotes = true;
+CKEDITOR.config.autocorrect_smartQuotesAsYouType = true;
+
+CKEDITOR.config.autocorrect_smartQuotes = true;
 // language specific
 CKEDITOR.config.autocorrect_doubleQuotes = "“”";
 
+CKEDITOR.config.autocorrect_createHorizontalRulesAsYouType = true;
+
 CKEDITOR.config.autocorrect_createHorizontalRules = true;
 
+CKEDITOR.config.autocorrect_formatBulletedListsAsYouType = true;
+
 CKEDITOR.config.autocorrect_formatBulletedLists = true;
+
+CKEDITOR.config.autocorrect_formatNumberedListsAsYouType = true;
 
 CKEDITOR.config.autocorrect_formatNumberedLists = true;
 
