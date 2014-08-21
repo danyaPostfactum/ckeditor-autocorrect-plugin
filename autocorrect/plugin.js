@@ -600,8 +600,7 @@
 				return true;
 			}
 
-			var horizontalRuleMarkers = ['-', '_'];
-			var horizontalRuleRe = new RegExp('^' + '(' + horizontalRuleMarkers.map(function(marker){ return marker + '{3,}';}).join('|') + ')' + '$');
+			var horizontalRuleRe = /^(-{3,}|_{3,})$/;
 			function insertHorizontalRule(parent, content) {
 				var match = content.match(horizontalRuleRe);
 				if (!match)
@@ -613,7 +612,7 @@
 				return true;
 			}
 
-			var bulletedListMarkers = ['*', '+', '•'];
+			var bulletedListMarkers = arrayToMap(['*', '+', '•']);
 			function formatBulletedList(cursor, input) {
 				var parent = getBlockParent(cursor.startContainer);
 
@@ -634,7 +633,7 @@
 
 				var marker = iterator.previousCharacter();
 
-				if (!marker || bulletedListMarkers.indexOf(marker) < 0)
+				if (!marker || !(marker in bulletedListMarkers))
 					return false;
 
 				markerRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
@@ -829,8 +828,8 @@
 			}
 
 			function characterPosition(character) {
-				var alfa = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-				return alfa.indexOf(character) + 1;
+				var alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+				return alpha.indexOf(character) + 1;
 			}
 
 			function toArabic(number) {
