@@ -7,12 +7,39 @@
  */
 
 (function() {
-
+	var localStorage = window.localStorage;
+	if (!localStorage) {
+		localStorage = {
+			getItem: function(key) {
+				return null;
+			},
+			setItem: function(key, value) {
+			}
+		};
+	}
+	var dynamicOptions = [
+		'useReplacementTable',
+		'recognizeUrlsAsYouType',
+		'recognizeUrls',
+		'replaceHyphensAsYouType',
+		'replaceHyphens',
+		'formatOrdinalsAsYouType',
+		'formatOrdinals',
+		'smartQuotesAsYouType',
+		'smartQuotes',
+		'createHorizontalRulesAsYouType',
+		'createHorizontalRules',
+		'formatBulletedListsAsYouType',
+		'formatBulletedLists',
+		'formatNumberedListsAsYouType',
+		'formatNumberedLists'
+	];
 	var autocorrect = CKEDITOR.plugins.autocorrect = {
 		getOption: function(key) {
 			return CKEDITOR.config['autocorrect_' + key];
 		},
 		setOption: function(key, value) {
+			localStorage.setItem('autocorrect_' + key, value);
 			CKEDITOR.config['autocorrect_' + key] = value;
 		}
 	};
@@ -24,6 +51,19 @@
 		for (var i = 0; i < array.length; i++)
 			map[array[i]] = true;
 		return map;
+	}
+
+	function loadOptions() {
+		for (var i = 0; i < dynamicOptions.length; i++) {
+			var key = dynamicOptions[i];
+			var localValue = null;
+			try {
+				localValue = JSON.parse(localStorage.getItem('autocorrect_' + key));
+			} catch (e) {}
+			if (localValue !== null) {
+				CKEDITOR.config['autocorrect_' + key] = localValue;
+			}
+		}
 	}
 
 	function CharacterIterator(range) {
@@ -68,7 +108,7 @@
 		init: function( editor ) {
 			var config = editor.config;
 			var lang = editor.lang.autocorrect;
-
+			loadOptions();
 			editor.addCommand( 'autocorrect', {
 				exec: function(editor) {
 					editor.fire( 'saveSnapshot' );
@@ -85,7 +125,7 @@
 
 					var walker = new CKEDITOR.dom.walker( walkerRange );
 					editor.editable().$.normalize();
-					walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_TEXT && !isBookmark(node) };
+					walker.evaluator = function( node ) { return node.type === CKEDITOR.NODE_TEXT && !isBookmark(node); };
 					var node;
 					while (node = walker.next()) {
 						var next = getNext(node);
@@ -706,7 +746,7 @@
 
 				var startNumber = toNumber(start, type);
 
-				var parent = getBlockParent(cursor.startContainer);
+				parent = getBlockParent(cursor.startContainer);
 				var previous = parent.getPrevious();
 
 				beforeReplace();
