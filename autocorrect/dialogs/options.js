@@ -37,8 +37,8 @@
 							children: [
 								{
 								type: 'checkbox',
-								id: 'smartQuotesCheckbox',
-								option: 'smartQuotes',
+								id: 'useReplacementTableCheckbox',
+								option: 'useReplacementTable',
 								setup: setupOption,
 								commit: commitOption,
 								isChanged: false,
@@ -139,7 +139,7 @@
 								{
 								type: 'checkbox',
 								id: 'formatBulletedListsCheckbox',
-								option: 'formatBulletedLists',
+								option: 'formatBulletedListsAsYouType',
 								setup: setupOption,
 								commit: commitOption,
 								isChanged: false,
@@ -148,7 +148,7 @@
 								{
 								type: 'checkbox',
 								id: 'formatNumberedListsCheckbox',
-								option: 'formatNumberedLists',
+								option: 'formatNumberedListsAsYouType',
 								setup: setupOption,
 								commit: commitOption,
 								isChanged: false,
@@ -157,7 +157,7 @@
 								{
 								type: 'checkbox',
 								id: 'createHorizontalRulesCheckbox',
-								option: 'createHorizontalRules',
+								option: 'createHorizontalRulesAsYouType',
 								setup: setupOption,
 								commit: commitOption,
 								isChanged: false,
