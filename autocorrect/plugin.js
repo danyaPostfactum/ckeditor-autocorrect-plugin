@@ -564,8 +564,12 @@
 
 				beforeReplace();
 				var bookmark = cursor.createBookmark();
-				var attributes = {'data-cke-saved-href': href, href: href};
-				var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
+				//use config to control HTML of linkified text
+				if(config.autocorrect_recognizeUrlsTagAttribs=='href')
+					var attributes = {'data-cke-saved-href': href, href: href};
+				else
+					var attributes=config.autocorrect_recognizeUrlsTagAttribs;
+				var style = new CKEDITOR.style({ element: config.autocorrect_recognizeUrlsTag, attributes: attributes } );
 				style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
 				style.applyToRange( matchRange );
 				cursor.moveToBookmark(bookmark);
@@ -966,6 +970,9 @@ CKEDITOR.config.autocorrect_useReplacementTable = true;
 CKEDITOR.config.autocorrect_recognizeUrlsAsYouType = true;
 
 CKEDITOR.config.autocorrect_recognizeUrls = true;
+//Control HTML of linkified URLs in text
+CKEDITOR.config.autocorrect_recognizeUrlsTag = 'a';
+CKEDITOR.config.autocorrect_recognizeUrlsTagAttribs = 'href';
 // language specific
 CKEDITOR.config.autocorrect_dash = '–';
 
