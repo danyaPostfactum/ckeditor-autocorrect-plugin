@@ -563,12 +563,16 @@
 				var href = match[1].toLowerCase() === 'www.' ? 'http://' + url : url;
 
 				beforeReplace();
-				var bookmark = cursor.createBookmark();
+				var link = editor.elementPath( matchRange.getCommonAncestor() ).contains( 'a', 1 );
 				var attributes = {'data-cke-saved-href': href, href: href};
-				var style = new CKEDITOR.style({ element: 'a', attributes: attributes } );
-				style.type = CKEDITOR.STYLE_INLINE; // need to override... dunno why.
-				style.applyToRange( matchRange );
-				cursor.moveToBookmark(bookmark);
+				if (link) {
+					link.setAttributes(attributes);
+				} else {
+					var bookmark = cursor.createBookmark();
+					var style = new CKEDITOR.style({ element: 'a', attributes: attributes, type: CKEDITOR.STYLE_INLINE } );
+					style.applyToRange(matchRange);
+					cursor.moveToBookmark(bookmark);
+				}
 				moveCursorIntoTextNode(cursor);
 				afterReplace();
 
