@@ -505,7 +505,7 @@
 				var ch;
 				while ((ch = iterator.previousCharacter()) && !isWhitespace(ch)) {
 					sequence = ch + sequence;
-					if (sequence in replacementTable) {
+					if (replacementTable.hasOwnProperty(sequence)) {
 						match = sequence;
 						replacement = replacementTable[match];
 						matchRange.setStart(iterator.referenceNode, iterator.referenceCharacterOffset);
