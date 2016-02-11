@@ -961,7 +961,7 @@
 
 
 /**
- *
+ * 
  *
  * @cfg
  * @member CKEDITOR.config
