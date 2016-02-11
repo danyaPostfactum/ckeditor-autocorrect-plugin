@@ -12,7 +12,7 @@
 	try {
 		localStorage = window.localStorage;
 		localStorage.setItem(storageTest, storageTest)
-		localStorage.getItem(storageTest)
+		localStorage.removeItem(storageTest)
 	} catch(e) {
 		localStorage = {
 			getItem: function(key) {
@@ -961,7 +961,7 @@
 
 
 /**
- * 
+ *
  *
  * @cfg
  * @member CKEDITOR.config
