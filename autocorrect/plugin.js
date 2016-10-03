@@ -801,7 +801,14 @@
 
 				var leftChar = iterator.previousCharacter();
 
-				var isClosingQuote = leftChar ? '  –—([{'.indexOf(leftChar) < 0 : false;
+				var startMatches = quoteRange.startContainer.$.wholeText.match(new RegExp(quotes[0], 'g'));
+				var endMatches = quoteRange.startContainer.$.wholeText.match(new RegExp(quotes[1], 'g'));
+
+				var startQuoteCount = startMatches ? startMatches.length : 0;
+				var endQuoteCount = endMatches ? endMatches.length : 0;
+
+				var isClosingQuote = leftChar ? ('  –—([{'.indexOf(leftChar) < 0 || (startQuoteCount > 0 && startQuoteCount !== endQuoteCount))  : false;
+
 				var replacement = quotes[Number(isClosingQuote)];
 
 				beforeReplace();
@@ -956,7 +963,7 @@
 
 
 /**
- * 
+ *
  *
  * @cfg
  * @member CKEDITOR.config
