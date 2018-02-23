@@ -1,0 +1,15 @@
+{
+  "name": "ckeditor-autocorrect-plugin",
+  "version": "1.0.0",
+  "description": "AutoCorrect plugin for CKEditor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danyaPostfactum/ckeditor-autocorrect-plugin.git"
+  },
+  "author": "danyaPostfactum",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/danyaPostfactum/ckeditor-autocorrect-plugin/issues"
+  },
+  "homepage": "https://github.com/danyaPostfactum/ckeditor-autocorrect-plugin#readme"
+}
