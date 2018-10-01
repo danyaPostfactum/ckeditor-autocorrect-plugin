@@ -1,4 +1,4 @@
-CKEDITOR.plugins.setLang( 'autocorrect', 'en', {
+CKEDITOR.plugins.setLang( 'autocorrect', 'pt-BR', {
 	toolbar: 'AutoCorrect',
 	autocorrect: 'AutoCorrect',
 	disable: 'Desativar AutoCorrect',
