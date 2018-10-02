@@ -1,0 +1,23 @@
+CKEDITOR.plugins.setLang( 'autocorrect', 'pt-BR', {
+	toolbar: 'AutoCorrect',
+	autocorrect: 'AutoCorrect',
+	disable: 'Desativar AutoCorrect',
+	enable: 'Ativar AutoCorrect',
+	autocorrectNow: 'AutoCorrect agora',
+	options: 'AutoCorrect Opções',
+	autoformat: 'AutoFormat',
+	autoformatAsYouType: 'AutoFormat Enquanto você digita',
+	replaceTextAsYouType: 'Substituir o texto enquanto você digita',
+	replaceAsYouType: 'Substituir enquanto digita',
+	applyAsYouType: 'Aplicar enquanto você digita',
+	apply: 'Aplicar',
+	replace: 'Substituir',
+	smartQuotesOption: '"Citações diretas" com "citações inteligentes"',
+	formatOrdinalsOption: 'Ordinais (1º) com sobrescrito',
+	replaceHyphensOption: 'Hífens (-) com traço (-)',
+	recognizeUrlsOption: 'Internet e caminhos de rede com hiperlinks',
+	formatBulletedListsOption: 'Listas com marcadores automáticas',
+	formatNumberedListsOption: 'Listas numeradas automáticas',
+	createHorizontalRulesOption: 'Regras horizontais',
+	replaceFractionsOption: 'Frações (1/2) com caráter de fração (½)'
+});
