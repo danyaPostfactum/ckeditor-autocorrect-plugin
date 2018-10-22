@@ -2,7 +2,7 @@ AutoCorrect plugin for CKEditor
 ============================
 
 Brings some autocorrect features from MS Word / Open Office word processors.
-Works as you type only. At present there is no way to autocorrect an existing text.
+It Works as you type. You can also correct an already typed text manually.
 
 Features:
 
