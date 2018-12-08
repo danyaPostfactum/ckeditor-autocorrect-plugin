@@ -35,6 +35,7 @@ Installation
 ------------
 
 Place it in plugins/autocorrect directory where CKEditor is installed and don't forget to add 'autocorrect' to config.extraPlugins
+If you use custom toolbar config, add "AutoCorrect" button to appear in toolbar.
 
 Config
 ------
@@ -68,7 +69,6 @@ Config
 
 Usage
 -----
-
 
 
 Author
