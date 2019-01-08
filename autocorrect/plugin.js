@@ -7,8 +7,13 @@
  */
 
 (function() {
-	var localStorage = window.localStorage;
-	if (!localStorage) {
+	var storageTest = 'autocorrectplugin'
+	var localStorage = null;
+	try {
+		localStorage = window.localStorage;
+		localStorage.setItem(storageTest, storageTest)
+		localStorage.removeItem(storageTest)
+	} catch(e) {
 		localStorage = {
 			getItem: function(key) {
 				return null;
