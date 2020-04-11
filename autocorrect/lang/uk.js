@@ -1,0 +1,22 @@
+CKEDITOR.plugins.setLang( 'autocorrect', 'uk', {
+	toolbar: 'Автокорекція',
+	autocorrect: 'Автокорекція',
+	disable: 'Вимкнути автокорекцію',
+	enable: 'Увімкнути автокорекцію',
+	autocorrectNow: 'Застосувати автокорекцію',
+	options: 'Параметри автокорекції',
+	autoformat: 'Автоформат',
+	autoformatAsYouType: 'Автоформат під час введення',
+	replaceTextAsYouType: 'Заміняти текст під час введення',
+	replaceAsYouType: 'Заміняти під час введення',
+	applyAsYouType: 'Застосовувати під час введення',
+	apply: 'Застосовувати',
+	replace: 'Заміняти',
+	smartQuotesOption: '"Прямі" лапки “розумними”',
+	formatOrdinalsOption: 'Суфікси порядкових числівників (1st) надряковими символами',
+	replaceHyphensOption: 'Дефіси (--) на тире (—)',
+	recognizeUrlsOption: 'Адреси Інтернету та мережі гіперпосиланнями',
+	formatBulletedListsOption: 'Автоматичні марковані списки',
+	formatNumberedListsOption: 'Автоматичні нумеровані списки',
+	createHorizontalRulesOption: 'Горизонтальні лінії'
+});
