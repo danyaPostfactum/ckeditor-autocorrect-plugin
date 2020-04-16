@@ -1,0 +1,23 @@
+CKEDITOR.plugins.setLang( 'autocorrect', 'fr', {
+	toolbar: 'Autocorrection',
+	autocorrect: 'Correction automatique',
+	disable: 'Désactiver l’autocorrection',
+	enable: 'Activer l’autocorrection',
+	autocorrectNow: 'Démarrer l’autocorrection',
+	options: 'Options de correction automatique',
+	autoformat: 'AutoFormat',
+	autoformatAsYouType: 'Mise en forme automatique',
+	replaceTextAsYouType: 'Remplacer au cours de la frappe',
+	replaceAsYouType: 'Mise en forme automatique au cours de la frappe',
+	applyAsYouType: 'Remplace au cours de la frappe',
+	apply: 'remplacer',
+	replace: 'mise en forme',
+	smartQuotesOption: 'Les guillemets "pairs" par «typographique»',
+	formatOrdinalsOption: 'Ordinaux (1er) en exposant',
+	replaceHyphensOption: 'Traits d’union (--) avec tiret demi-cadratien (—)',
+	recognizeUrlsOption: 'Adresses Internet et réseau par des liens hypertexte',
+	formatBulletedListsOption: 'Liste à puces automatiques',
+	formatNumberedListsOption: 'Listes numérotées automatiques',
+	createHorizontalRulesOption: 'Bordures',
+	replaceFractionsOption: 'Fractions (1/2) par caractère de fraction (½)'
+});
