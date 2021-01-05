@@ -102,7 +102,7 @@
 
 	CKEDITOR.plugins.add( 'autocorrect', {
 		requires: 'menubutton',
-		lang: 'en,ru',
+		lang: 'en,ru,nl',
 		icons: 'autocorrect', // %REMOVE_LINE_CORE%
 		hidpi: true, // %REMOVE_LINE_CORE%
 		init: function( editor ) {
