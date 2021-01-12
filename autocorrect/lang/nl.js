@@ -1,0 +1,23 @@
+CKEDITOR.plugins.setLang( 'autocorrect', 'nl', {
+	toolbar: 'AutoCorrect',
+	autocorrect: 'AutoCorrect',
+	disable: 'AutoCorrect uitschakelen',
+	enable: 'AutoCorrect inschakelen',
+	autocorrectNow: 'AutoCorrect Nu',
+	options: 'AutoCorrect Opties',
+	autoformat: 'AutoFormat',
+	autoformatAsYouType: 'AutoFormat Terwijl U Typt',
+	replaceTextAsYouType: 'Vervang tekst terwijl u typt',
+	replaceAsYouType: 'Vervang terwijl u typt',
+	applyAsYouType: 'Pas toe terwijl u typt',
+	apply: 'Toepassen',
+	replace: 'Vervang',
+	smartQuotesOption: '"Rechte aanhalingstekens" met “slimme aanhalingstekens”',
+	formatOrdinalsOption: 'Rangtelwoorden (1e) met superscript',
+	replaceHyphensOption: 'Koppeltekens (--) met streepje (-)',
+	recognizeUrlsOption: 'Internet- en netwerkpaden met hyperlinks',
+	formatBulletedListsOption: 'Automatische lijsten met opsommingstekens',
+	formatNumberedListsOption: 'Automatische genummerde lijsten',
+	createHorizontalRulesOption: 'Horizontale regels',
+	replaceFractionsOption: 'Breuken (1/2) met breuk-karakter (½)'
+});
