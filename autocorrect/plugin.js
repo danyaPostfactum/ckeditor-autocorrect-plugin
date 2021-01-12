@@ -214,6 +214,10 @@
 
 			editor.on( 'instanceReady', showInitialState );
 
+			editor.on( 'afterPaste' , function() {
+				editor.execCommand('autocorrect');
+			});
+
 			var isTyping = false;
 
 			function getOption(key) {
